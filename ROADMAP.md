@@ -335,6 +335,19 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   have actually responded before arbitrating; fewer raises `RuntimeError`
   (`error_code="quorum_not_met"`, recorded in `trace`/`audit` the same way
   the pre-existing "nobody responded at all" error already was).
+- [x] Conflict escalation —
+  [`nexus/conflict_policy.py`](python/src/nexus/conflict_policy.py)
+  (`ConflictPolicy`), `NexusCore(conflict_policy=...)`: gates the
+  arbitrated `Verdict` itself, after arbitration has already run.
+  Candidates agreeing passes through as normal; candidates *disagreeing*
+  (`verdict.agreement is False`) raises `PermissionError`
+  (`error_code="conflict_not_approved"`) unless a configured `approver`
+  accepts it — same "assess -> approve -> execute" shape and fail-closed
+  default as `nexus.policy.PolicyEngine` (RFC-0006), applied to *evidence
+  disagreement between candidates* instead of *self-declared task risk*:
+  a different axis, evaluated at a different point (after arbitration, not
+  before dispatch), so it's a separate class rather than overloading
+  `PolicyEngine` with a second, unrelated meaning for `risk`.
 
 ## Level 8 — Policy + Security
 

@@ -100,7 +100,7 @@ locally:
 cd python
 python -m venv .venv && .venv/Scripts/activate   # or source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                       # 346 tests + 1 skipped (pip install -e ".[dev]" pulls in the optional crypto and a2a extras;
+pytest                       # 358 tests + 1 skipped (pip install -e ".[dev]" pulls in the optional crypto and a2a extras;
                               # the skipped test hits the real ruflo CLI — set NEXUS_RUFLO_INTEGRATION=1 to run it)
 python examples/quickstart.py
 python examples/full_stack.py

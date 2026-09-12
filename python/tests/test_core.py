@@ -718,3 +718,92 @@ def test_debate_without_quorum_arbitrates_with_however_many_responded():
 
     verdict = core.debate("classify")  # quorum=None, default
     assert len(verdict.candidates) == 1
+
+
+def _register_disagreeing_agents(core: NexusCore) -> tuple[Agent, Agent]:
+    """Two candidates producing genuinely different outputs, so
+    ArbitrationEngine's Verdict.agreement comes back False — the scenario
+    ConflictPolicy exists for."""
+    weak = Agent(name="Weak", capabilities=["classify"])
+    strong = Agent(name="Strong", capabilities=["classify"])
+
+    @weak.task("classify")
+    def weak_handle(task: Task) -> Result:
+        ev = weak.make_evidence(claim="x", source="y", transformation="inferred", confidence=0.5)
+        return Result(task_id=task.id, output={"label": "spam"}, evidence=[ev])
+
+    @strong.task("classify")
+    def strong_handle(task: Task) -> Result:
+        ev = strong.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.95)
+        return Result(task_id=task.id, output={"label": "ham"}, evidence=[ev])
+
+    core.register(weak)
+    core.register(strong)
+    return weak, strong
+
+
+def test_debate_without_conflict_policy_returns_disagreement_unblocked():
+    core = NexusCore(arbiter=ArbitrationEngine())  # conflict_policy=None — unaffected by this feature
+    _register_disagreeing_agents(core)
+
+    verdict = core.debate("classify")
+    assert verdict.agreement is False
+
+
+def test_debate_blocks_a_disagreement_with_no_approver_configured():
+    from nexus.conflict_policy import ConflictPolicy
+
+    core = NexusCore(arbiter=ArbitrationEngine(), conflict_policy=ConflictPolicy())
+    _register_disagreeing_agents(core)
+
+    with pytest.raises(PermissionError):
+        core.debate("classify")
+
+
+def test_debate_allows_agreement_through_conflict_policy_without_an_approver():
+    from nexus.conflict_policy import ConflictPolicy
+
+    core = NexusCore(arbiter=ArbitrationEngine(), conflict_policy=ConflictPolicy())
+    a = Agent(name="A", capabilities=["op"])
+    b = Agent(name="B", capabilities=["op"])
+
+    @a.task("op")
+    def handle_a(task: Task) -> dict:
+        return {"handled_by": "same"}
+
+    @b.task("op")
+    def handle_b(task: Task) -> dict:
+        return {"handled_by": "same"}
+
+    core.register(a)
+    core.register(b)
+
+    verdict = core.debate("op")  # both candidates agree — no approver needed
+    assert verdict.agreement is True
+
+
+def test_debate_conflict_block_appears_in_trace_before_raising():
+    from nexus.conflict_policy import ConflictPolicy
+
+    core = NexusCore(arbiter=ArbitrationEngine(), conflict_policy=ConflictPolicy())
+    _register_disagreeing_agents(core)
+
+    with pytest.raises(PermissionError):
+        core.debate("classify", task_id="task-conflict-1")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert core.trace[-1]["payload"]["error_code"] == "conflict_not_approved"
+
+
+def test_debate_disagreement_approved_by_approver_proceeds():
+    from nexus.conflict_policy import ConflictPolicy
+
+    core = NexusCore(
+        arbiter=ArbitrationEngine(),
+        conflict_policy=ConflictPolicy(approver=lambda verdict, decision: True),
+    )
+    weak, strong = _register_disagreeing_agents(core)
+
+    verdict = core.debate("classify")
+    assert verdict.agreement is False
+    assert verdict.winner_agent_id == strong.identity.agent_id

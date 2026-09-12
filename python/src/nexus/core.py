@@ -95,6 +95,16 @@ class PolicySource(Protocol):
     def evaluate(self, task: Task) -> Any: ...
 
 
+class ConflictPolicySource(Protocol):
+    """Structural type for an optional arbitration-disagreement gate (see
+    `nexus.conflict_policy.ConflictPolicy`) — distinct from `PolicySource`:
+    that one gates a task's self-declared `risk` before dispatch, this one
+    gates `debate()`'s `Verdict.agreement` after arbitration. Same
+    reasoning as `GraphSink`."""
+
+    def evaluate(self, verdict: Verdict) -> Any: ...
+
+
 class NexusCore:
     def __init__(
         self,
@@ -104,6 +114,7 @@ class NexusCore:
         arbiter: ArbitrationSource | None = None,
         policy: PolicySource | None = None,
         lessons: LessonSource | None = None,
+        conflict_policy: ConflictPolicySource | None = None,
     ) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
@@ -113,6 +124,7 @@ class NexusCore:
         self.arbiter = arbiter
         self.policy = policy
         self.lessons = lessons
+        self.conflict_policy = conflict_policy
 
     def _record(self, env: dict[str, Any]) -> None:
         self.trace.append(env)
@@ -374,7 +386,20 @@ class NexusCore:
           (`error_code="quorum_not_met"`, recorded the same way the
           existing "no candidate responded at all" error is) instead of
           arbitrating a decision from a thinner pool than the caller
-          considered meaningful."""
+          considered meaningful.
+
+        `self.conflict_policy` (`NexusCore(conflict_policy=...)`, see
+        `nexus.conflict_policy.ConflictPolicy`), if configured, gates the
+        arbitrated `Verdict` itself, after `self.arbiter.arbitrate()` has
+        already run: candidates agreeing lets the verdict through as
+        normal; candidates *disagreeing* (`verdict.agreement is False`) —
+        an unreviewed evidence conflict between models — raises
+        `PermissionError` (`error_code="conflict_not_approved"`, recorded
+        the same way a `self.policy` block already is) unless the
+        configured approver accepts it. This is a different axis from
+        `self.policy`/`risk`: that gates a task's self-declared risk
+        *before* any candidate runs; this gates *disagreement among the
+        results* after they all have."""
         if self.arbiter is None:
             raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
 
@@ -448,6 +473,12 @@ class NexusCore:
             raise RuntimeError(message)
 
         verdict = self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())
+
+        if self.conflict_policy is not None:
+            decision = self.conflict_policy.evaluate(verdict)
+            if decision.action != "allow":
+                _record_error("conflict_not_approved", decision.reason)
+                raise PermissionError(f"debate() blocked by conflict policy: {decision.reason}")
 
         winner = next(a for a in pool if a.identity.agent_id == verdict.winner_agent_id)
         if self.graph is not None:

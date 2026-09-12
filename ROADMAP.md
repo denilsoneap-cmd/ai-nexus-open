@@ -118,8 +118,15 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   `messages`, `candidates` instead of `choices`, API key as a URL query
   param instead of an `Authorization` header) — confirms the adapter layer
   actually absorbs vendor differences instead of just aliasing OpenAI's shape.
-- [ ] Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao, and local models
-  (Ollama, vLLM, llama.cpp) — not started; same template to repeat.
+- [x] Fifth and sixth real model adapters: Qwen and DeepSeek —
+  [`python/src/nexus/adapters/qwen.py`](python/src/nexus/adapters/qwen.py) /
+  [`python/src/nexus/adapters/deepseek.py`](python/src/nexus/adapters/deepseek.py)
+  (`make_qwen_agent`/`call_qwen`, `make_deepseek_agent`/`call_deepseek`) —
+  both vendors expose an OpenAI-compatible Chat Completions endpoint, so each
+  adapter is a near-identical copy of `openai.py` with a different base URL,
+  default model, and API key variable (`QWEN_API_KEY` / `DEEPSEEK_API_KEY`).
+- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and local models (Ollama, vLLM,
+  llama.cpp) — not started; same template to repeat.
 
 ## Level 4 — Agent Ecosystem
 

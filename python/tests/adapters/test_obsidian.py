@@ -48,3 +48,18 @@ def test_vault_directory_is_created_if_missing(tmp_path):
     vault_path = tmp_path / "does" / "not" / "exist"
     ObsidianVault(vault_path)
     assert vault_path.is_dir()
+
+
+def test_write_evidence_note_sanitizes_path_traversal_in_task_id(tmp_path):
+    """Regression: task_id reaches this method from wherever the Task came
+    from - including an incoming A2A message's `taskId` field, which this
+    module doesn't control - and used to be joined into a path unsanitized.
+    A task_id like '../../../../evil' would have escaped the vault
+    directory entirely."""
+    vault_dir = tmp_path / "vault"
+    vault = ObsidianVault(vault_dir)
+    note_path = vault.write_evidence_note(make_evidence(), task_id="../../../../evil")
+
+    assert note_path.parent == vault_dir
+    assert ".." not in note_path.parts
+    assert note_path.exists()

@@ -80,6 +80,37 @@ def test_send_with_invalid_responds_to_raises(tmp_path):
         transport.send(SENDER, RECEIVER, {}, responds_to="not-a-valid-id")
 
 
+def test_send_with_dot_dot_agent_id_does_not_escape_bus_root(tmp_path):
+    """Regression: agent_id='..' used to pass `_safe_dir` unchanged (only
+    '/' etc. were substituted, not the bare '..' segment itself), so
+    `root / "inbox" / ".."` resolved to `root` — a real, if narrow,
+    directory-containment escape."""
+    transport = make_transport(tmp_path)
+    with pytest.raises(TransportError):
+        transport.send(SENDER, "..", {"hello": "world"})
+    assert not (tmp_path / "bus.json").exists()  # nothing leaked to bus's parent either
+
+
+def test_claim_with_path_traversal_message_id_is_rejected(tmp_path):
+    """Regression: claim()/complete()/release()/is_claimed() built a path
+    directly from `message_id` without validating it first (only `send`'s
+    `responds_to` was checked) — a crafted message_id could make
+    `_exclusive_write` create a claim/done marker file outside the intended
+    claims/processed directory."""
+    transport = make_transport(tmp_path)
+    evil_id = "../../../../evil"
+    with pytest.raises(TransportError):
+        transport.claim(RECEIVER, evil_id)
+    with pytest.raises(TransportError):
+        transport.complete(RECEIVER, evil_id)
+    with pytest.raises(TransportError):
+        transport.release(RECEIVER, evil_id)
+    with pytest.raises(TransportError):
+        transport.is_claimed(RECEIVER, evil_id)
+    # nothing should have been written anywhere near tmp_path's root
+    assert not any(tmp_path.glob("evil*"))
+
+
 def test_doctor_reports_root(tmp_path):
     transport = make_transport(tmp_path)
     report = transport.doctor()

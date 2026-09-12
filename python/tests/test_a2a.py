@@ -95,6 +95,24 @@ def test_result_to_a2a_task_and_back():
     assert restored.confidence == 0.94
 
 
+def test_a2a_task_to_outcome_merges_multiple_output_artifacts():
+    """Regression: A2A does not limit a Task to one non-evidence artifact —
+    an external A2A agent could return several. This used to let a later
+    artifact silently clobber an earlier one instead of merging."""
+    a2a_task = {
+        "id": "task-1",
+        "status": {"state": "COMPLETED"},
+        "metadata": {"nexus.status": "success"},
+        "artifacts": [
+            {"id": "a1", "parts": [{"structuredData": {"tax_rate": 0.18}}]},
+            {"id": "a2", "parts": [{"structuredData": {"jurisdiction": "MG"}}]},
+        ],
+    }
+    restored = a2a_task_to_outcome(a2a_task)
+    assert isinstance(restored, Result)
+    assert restored.output == {"tax_rate": 0.18, "jurisdiction": "MG"}
+
+
 def test_refused_result_maps_to_rejected_state():
     result = Result(task_id="task-1", status="refused", output={"reason": "out of scope"})
     a2a_task = result_to_a2a_task(result)

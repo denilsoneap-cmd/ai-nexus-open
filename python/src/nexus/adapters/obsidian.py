@@ -17,6 +17,19 @@ from ..protocol import Evidence
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
+def _safe_stem(value: str) -> str:
+    """Filesystem-safe filename stem. `task_id` reaches this method from
+    wherever a `Task` came from — including, via `nexus.a2a.a2a_message_to_task`,
+    an incoming A2A message's `taskId` field, which this module has no
+    control over. A `task_id` of e.g. `"../../../../etc/passwd"` used
+    unsanitized in a path join escapes the vault directory entirely.
+    Excluding '.' outright (unlike a scheme that keeps it and only rejects
+    the literal '..' segment) means a run of dots can't reconstitute a
+    traversal sequence after substitution."""
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", value)
+    return safe or "note"
+
+
 class ObsidianVault:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -26,8 +39,8 @@ class ObsidianVault:
         """One note per evidence entry (RFC-0001 §5) — the provenance chain
         becomes a browsable, linkable Obsidian note instead of living only
         inside a JSON envelope."""
-        agent_suffix = evidence.agent_id.split(":")[-1][:8]
-        note_path = self.path / f"{task_id}-{agent_suffix}.md"
+        agent_suffix = _safe_stem(evidence.agent_id.split(":")[-1][:8])
+        note_path = self.path / f"{_safe_stem(task_id)}-{agent_suffix}.md"
         frontmatter_lines = [
             "---",
             f"task_id: {task_id}",

@@ -57,8 +57,32 @@ def _new_message_id() -> str:
 
 
 def _safe_dir(agent_id: str) -> str:
-    """Filesystem-safe directory name for an agent_id like 'agent:<hex>'."""
-    return re.sub(r"[^A-Za-z0-9_.-]", "_", agent_id)
+    """Filesystem-safe directory name for an agent_id like 'agent:<hex>'.
+
+    The character substitution alone is not sufficient: '.' and '-' are
+    kept as literal characters (real agent_ids use them), which means an
+    agent_id of exactly '..' or '.' passes through unchanged and, joined
+    onto a parent path, is a real filesystem parent-directory reference —
+    `root / "inbox" / ".."` resolves to `root`, not an inbox at all. Reject
+    those results explicitly rather than relying on character filtering
+    alone to prevent it."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", agent_id)
+    if safe in ("", ".", ".."):
+        raise TransportError(f"unsafe agent_id for filesystem use: {agent_id!r}")
+    return safe
+
+
+def _validate_message_id(message_id: str) -> None:
+    """Every function that turns a message_id into a path must call this
+    first — CCG-1.2's `validate_actor_id()` was called at the top of every
+    such function; this was missed for `claim`/`complete`/`release`/
+    `is_claimed` in the initial port (only `send`'s `responds_to` checked
+    it), which would have let a crafted message_id build a path outside its
+    expected claims/processed directory (`_exclusive_write` creates
+    directories as needed, so this was a real arbitrary-file-write path
+    prior to this check, not just a theoretical one)."""
+    if not MESSAGE_ID_RE.fullmatch(message_id):
+        raise TransportError(f"invalid message_id: {message_id!r}")
 
 
 def _exclusive_write(path: Path, content: str) -> None:
@@ -159,9 +183,11 @@ class FilesystemTransport:
         return out
 
     def is_claimed(self, agent_id: str, message_id: str) -> bool:
+        _validate_message_id(message_id)
         return self._claims(agent_id).joinpath(f"{message_id}.claim.json").exists()
 
     def claim(self, agent_id: str, message_id: str) -> Envelope:
+        _validate_message_id(message_id)
         if self._processed(agent_id).joinpath(f"{message_id}.done.json").exists():
             raise TransportError(f"{message_id!r} already processed by {agent_id!r}")
         envelope_path = self._resolve_in(self._inbox(agent_id), f"{message_id}.json")
@@ -185,6 +211,7 @@ class FilesystemTransport:
         return envelope
 
     def complete(self, agent_id: str, message_id: str, response_id: str | None = None) -> None:
+        _validate_message_id(message_id)
         claim_path = self._claims(agent_id) / f"{message_id}.claim.json"
         if not claim_path.exists():
             raise TransportError(f"no claim held by {agent_id!r} for {message_id!r}")
@@ -197,6 +224,7 @@ class FilesystemTransport:
         claim_path.unlink()
 
     def release(self, agent_id: str, message_id: str) -> None:
+        _validate_message_id(message_id)
         claim_path = self._claims(agent_id) / f"{message_id}.claim.json"
         if not claim_path.exists():
             raise TransportError(f"no claim held by {agent_id!r} for {message_id!r}")

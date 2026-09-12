@@ -26,7 +26,7 @@ import uuid
 from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
-from .protocol import ErrorPayload, ProtocolError, Result, Task, envelope, validate_envelope
+from .protocol import ErrorPayload, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
 

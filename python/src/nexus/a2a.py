@@ -199,6 +199,11 @@ def a2a_task_to_outcome(a2a_task: dict[str, Any]) -> Result | ErrorPayload:
         )
 
     status = "refused" if state == "REJECTED" else metadata.get("nexus.status", "success")
+    # RFC-0001's Result.output is a single dict, but nothing in A2A limits a
+    # Task to one non-evidence artifact — an arbitrary A2A agent (the whole
+    # point of RFC-0003) could return several. Merge rather than let a
+    # later artifact silently clobber an earlier one; last-key-wins only on
+    # an actual name collision, not by dropping whole artifacts.
     output: dict[str, Any] = {}
     evidence: list[Evidence] = []
     for artifact in a2a_task.get("artifacts", []):
@@ -207,7 +212,7 @@ def a2a_task_to_outcome(a2a_task: dict[str, Any]) -> Result | ErrorPayload:
         else:
             for part in artifact.get("parts", []):
                 if "structuredData" in part:
-                    output = part["structuredData"]
+                    output.update(part["structuredData"])
 
     return Result(
         task_id=a2a_task["id"],

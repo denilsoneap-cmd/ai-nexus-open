@@ -25,6 +25,22 @@ Do not start implementation of a significant change before its RFC is
 accepted — it may be redesigned or rejected in review, and unreviewed
 implementation work is likely to be wasted.
 
+## Running tests
+
+```bash
+cd python
+python -m venv .venv && .venv/Scripts/activate   # or source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same
+suite on Python 3.10 and 3.12, on both Linux and Windows — the Windows leg
+exists on purpose: this project has already shipped one platform-specific
+bug (`nexus/adapters/ruflo.py`'s `subprocess` invocation) that a Linux-only
+CI would not have caught. A PR that fails CI on either OS will not be merged
+without a fix, not an explanation of why it's fine on the other one.
+
 ## Code style
 
 - Keep changes focused; do not mix an RFC's implementation with unrelated

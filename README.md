@@ -155,7 +155,8 @@ a2a_task = result_to_a2a_task(Result.from_payload(result_envelope["payload"]))
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#policy--safety) for the policy/risk model
 (human approval gates, simulation before execution, sandboxed tool calls).
-Report vulnerabilities per [SECURITY.md](SECURITY.md) once published.
+Report vulnerabilities per [SECURITY.md](SECURITY.md) — private reporting
+is enabled on this repo.
 
 ## Governance
 

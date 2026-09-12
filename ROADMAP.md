@@ -103,6 +103,13 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   confirms the pattern generalizes rather than being an Anthropic-specific
   one-off, and means `NexusCore.debate()` can now arbitrate between two
   genuinely different model vendors, not just two Python functions.
+- [x] Third real model adapter: OpenRouter —
+  [`python/src/nexus/adapters/openrouter.py`](python/src/nexus/adapters/openrouter.py)
+  (`make_openrouter_agent`, `call_openrouter`), same shape again
+  (`task.input["prompt"]` in, `{text, model, usage}` out) — OpenRouter's API
+  is itself OpenAI-compatible and routes to dozens of vendors/models by slug
+  (e.g. `openai/gpt-4o-mini`), so this one adapter covers a large swath of
+  Level 3's remaining vendor list without a bespoke integration per vendor.
 - [ ] Google, Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao, and local
   models (Ollama, vLLM, llama.cpp) — not started; same template to repeat.
 

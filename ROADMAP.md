@@ -27,14 +27,23 @@
 - [x] Agent identity spec — now an A2A AgentCard (RFC-0003 §2); `agent_id`
   format from RFC-0002 kept by convention, reference impl still in
   [`python/src/nexus/identity.py`](python/src/nexus/identity.py)
-- [ ] A real A2A transport (JSON-RPC/gRPC/HTTP server+client) — `a2a.py`
-  today only maps object *shapes*, it does not send anything over a network
+- [x] Filesystem Message Bus binding — [`python/src/nexus/transport/filesystem.py`](python/src/nexus/transport/filesystem.py)
+  (`FilesystemTransport`), ported from this project's own prior work in
+  `Comunicacao Claude Gpt/CCG-1.2/ccg12.py` (atomic exclusive writes,
+  claim/complete/release locking, symlink/path-containment checks); good for
+  same-machine/offline multi-agent setups, not one of A2A's own specified
+  bindings (see RFC-0003 §1)
+- [ ] A real *networked* A2A transport (JSON-RPC/gRPC/HTTP server+client per
+  A2A's own spec) — still open; `a2a.py` maps object *shapes*, the
+  filesystem transport moves them locally, neither speaks to an external
+  A2A agent over a network yet
 
 ## Level 2 — Nexus Core
 
 - [x] Router (capability/objective matching) — [`python/src/nexus/core.py`](python/src/nexus/core.py) `NexusCore.route()`
 - [x] Orchestrator (single-process, in-memory reference) — same module
-- [ ] Message bus (real transport — currently in-process function calls only)
+- [x] Message bus — filesystem binding done (see Level 1 above); a networked
+  binding is still open
 - [x] Agent registry — `NexusCore.register()` / `find_by_capability()`
 - [ ] Dogfood adapter: [Ruflo](https://github.com/ruvnet/ruflo) (claude-flow-based
   swarm orchestration) — already configured in this workspace (`.claude-flow/`,

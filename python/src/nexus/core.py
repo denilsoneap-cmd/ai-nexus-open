@@ -31,6 +31,7 @@ from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
 from .arbitration import Candidate, Verdict
+from .conflict_policy import ConflictBlocked
 from .protocol import ErrorPayload, Evidence, Result, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
@@ -394,9 +395,13 @@ class NexusCore:
         already run: candidates agreeing lets the verdict through as
         normal; candidates *disagreeing* (`verdict.agreement is False`) —
         an unreviewed evidence conflict between models — raises
-        `PermissionError` (`error_code="conflict_not_approved"`, recorded
-        the same way a `self.policy` block already is) unless the
-        configured approver accepts it. This is a different axis from
+        `nexus.conflict_policy.ConflictBlocked` (a `PermissionError`
+        subclass carrying the blocked `.verdict`, so a caller can still
+        inspect `.verdict.candidates` — e.g. to release per-candidate
+        resources it allocated for this debate) with
+        `error_code="conflict_not_approved"` recorded the same way a
+        `self.policy` block already is, unless the configured approver
+        accepts it. This is a different axis from
         `self.policy`/`risk`: that gates a task's self-declared risk
         *before* any candidate runs; this gates *disagreement among the
         results* after they all have."""
@@ -478,7 +483,7 @@ class NexusCore:
             decision = self.conflict_policy.evaluate(verdict)
             if decision.action != "allow":
                 _record_error("conflict_not_approved", decision.reason)
-                raise PermissionError(f"debate() blocked by conflict policy: {decision.reason}")
+                raise ConflictBlocked(verdict, f"debate() blocked by conflict policy: {decision.reason}")
 
         winner = next(a for a in pool if a.identity.agent_id == verdict.winner_agent_id)
         if self.graph is not None:

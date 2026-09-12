@@ -760,6 +760,24 @@ def test_debate_blocks_a_disagreement_with_no_approver_configured():
         core.debate("classify")
 
 
+def test_conflict_blocked_carries_the_blocked_verdict():
+    """A caller (e.g. nexus-coder, which allocates a worktree per
+    candidate) needs the blocked Verdict itself to clean up per-candidate
+    resources it allocated for this debate — a bare PermissionError with
+    no payload would leak them."""
+    from nexus.conflict_policy import ConflictBlocked, ConflictPolicy
+
+    core = NexusCore(arbiter=ArbitrationEngine(), conflict_policy=ConflictPolicy())
+    weak, strong = _register_disagreeing_agents(core)
+
+    with pytest.raises(ConflictBlocked) as exc_info:
+        core.debate("classify")
+
+    verdict = exc_info.value.verdict
+    assert verdict.agreement is False
+    assert {c["agent_id"] for c in verdict.candidates} == {weak.identity.agent_id, strong.identity.agent_id}
+
+
 def test_debate_allows_agreement_through_conflict_policy_without_an_approver():
     from nexus.conflict_policy import ConflictPolicy
 

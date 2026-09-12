@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 ConflictAction = Literal["allow", "block"]
 
 
+class ConflictBlocked(PermissionError):
+    """Raised by `NexusCore.debate()` in place of a bare `PermissionError`
+    when `conflict_policy` blocks — carries the `Verdict` that was blocked
+    (`ArbitrationEngine` already computed one; `conflict_policy` gates
+    whether to hand it back, not whether one exists) so a caller can still
+    inspect `.verdict.candidates`, e.g. to clean up per-candidate resources
+    a real integration (like `nexus-coder`) allocated for this debate, the
+    same way it would for a successful one. `TaskFailed` (`nexus.agent`)
+    carries its `ErrorPayload` for the same reason."""
+
+    def __init__(self, verdict: "Verdict", message: str) -> None:
+        self.verdict = verdict
+        super().__init__(message)
+
+
 @dataclass
 class ConflictDecision:
     action: ConflictAction

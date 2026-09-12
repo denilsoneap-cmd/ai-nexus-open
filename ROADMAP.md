@@ -291,6 +291,14 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   each other, same precondition any concurrent task runner has. First real
   consumer: [`nexus-coder`](https://github.com/denilsoneap-cmd/nexus-coder),
   which runs one real `aider` subprocess per candidate model.
+- [x] `won` graph edge — `debate()` was recording `routed_to`/
+  `produced_result`/`supported_by` for every candidate but nothing marking
+  which one actually won; a caller reading the graph back later (not the
+  in-memory, per-run-only `trace`) had no way to tell a winner from a
+  loser. `GraphStore.edges_by_relation(relation, limit=None)` added
+  alongside it, for building a report across many past debates rather than
+  looking up one specific node. First real consumer:
+  [`nexus-coder history`](https://github.com/denilsoneap-cmd/nexus-coder).
 - [ ] Remaining RFC-0005 §5 gaps: no timeout or quorum; no cap on how many
   agents get debated.
 

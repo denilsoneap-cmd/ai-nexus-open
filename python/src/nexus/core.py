@@ -400,6 +400,12 @@ class NexusCore:
         verdict = self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())
 
         winner = next(a for a in pool if a.identity.agent_id == verdict.winner_agent_id)
+        if self.graph is not None:
+            # routed_to/produced_result are recorded per-candidate above,
+            # but nothing yet marks which one actually won — without this
+            # edge, a caller reading the graph back (not the in-memory,
+            # per-run-only trace) has no way to tell a winner from a loser.
+            self.graph.add_edge(task_node, winner.identity.agent_id, "won")
         result_envelope = envelope(
             message_type="result", sender=winner.identity.to_dict(minimal=True),
             payload=verdict.winning_result.to_payload(),

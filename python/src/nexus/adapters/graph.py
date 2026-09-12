@@ -103,5 +103,18 @@ class GraphStore:
         cur = self._conn.execute("SELECT * FROM graph_edges WHERE target_id = ?", (target_id,))
         return self._rows_to_dicts(cur.fetchall())
 
+    def edges_by_relation(self, relation: str, limit: int | None = None) -> list[dict[str, Any]]:
+        """All edges of one `relation` type, most recently created first —
+        e.g. every `"won"` edge a `NexusCore(graph=...)` debate has ever
+        recorded, for a caller building a report across many past runs
+        rather than looking up one specific node."""
+        query = "SELECT * FROM graph_edges WHERE relation = ? ORDER BY created_at DESC"
+        params: tuple[Any, ...] = (relation,)
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (relation, limit)
+        cur = self._conn.execute(query, params)
+        return self._rows_to_dicts(cur.fetchall())
+
     def close(self) -> None:
         self._conn.close()

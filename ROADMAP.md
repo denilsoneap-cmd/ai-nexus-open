@@ -110,8 +110,16 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   is itself OpenAI-compatible and routes to dozens of vendors/models by slug
   (e.g. `openai/gpt-4o-mini`), so this one adapter covers a large swath of
   Level 3's remaining vendor list without a bespoke integration per vendor.
-- [ ] Google, Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao, and local
-  models (Ollama, vLLM, llama.cpp) — not started; same template to repeat.
+- [x] Fourth real model adapter: Google —
+  [`python/src/nexus/adapters/google.py`](python/src/nexus/adapters/google.py)
+  (`make_google_agent`, `call_google`), Gemini's `generateContent` API.
+  Same `{text, model, usage}` contract as the other adapters despite a
+  different wire shape underneath (`contents[].parts[].text` instead of
+  `messages`, `candidates` instead of `choices`, API key as a URL query
+  param instead of an `Authorization` header) — confirms the adapter layer
+  actually absorbs vendor differences instead of just aliasing OpenAI's shape.
+- [ ] Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao, and local models
+  (Ollama, vLLM, llama.cpp) — not started; same template to repeat.
 
 ## Level 4 — Agent Ecosystem
 

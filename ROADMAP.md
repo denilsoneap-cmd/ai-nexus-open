@@ -82,6 +82,17 @@ configured (Level 8, RFC-0006); `task.constraints` is still not enforced.
 Adapters for OpenAI, Anthropic, Google, Qwen, DeepSeek, ERNIE, Kimi, GLM,
 Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
 
+Every vendor in that original list now has an adapter (13 total, 2026-09-12)
+except `llama.cpp` (its own server also speaks an OpenAI-compatible API —
+same template again, not yet done). `openai.py`/`deepseek.py`/
+`openrouter.py`/`qwen.py`/`ernie.py`/`kimi.py`/`glm.py`/`hunyuan.py`/
+`doubao.py` share one HTTP/error-handling/text-extraction helper
+([`nexus/adapters/_openai_compatible.py`](python/src/nexus/adapters/_openai_compatible.py))
+since they all speak the exact same Chat Completions wire format — added
+after a code review flagged the copy-paste cost of the first 4 before the
+remaining 5 vendors landed. `anthropic.py`/`google.py`/`ollama.py` stay
+bespoke because their wire shapes genuinely differ.
+
 - [x] Registry freshness check — [`python/src/nexus/adapters/registry.py`](python/src/nexus/adapters/registry.py)
   (`check_npm`/`check_pypi`/`compare_versions`), pattern lifted from this
   project's own `mcp-tools/context7-mcp/index.js`, reimplemented in pure
@@ -139,8 +150,19 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   `model` is required (no universal default — vLLM serves whatever was
   loaded at startup) and an API key is optional rather than required, since
   vLLM commonly runs unauthenticated on a private network.
-- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and llama.cpp — not started; same
-  template to repeat.
+- [x] Ninth through thirteenth adapters: ERNIE, Kimi, GLM, Hunyuan, and
+  Doubao — [`ernie.py`](python/src/nexus/adapters/ernie.py) /
+  [`kimi.py`](python/src/nexus/adapters/kimi.py) /
+  [`glm.py`](python/src/nexus/adapters/glm.py) /
+  [`hunyuan.py`](python/src/nexus/adapters/hunyuan.py) /
+  [`doubao.py`](python/src/nexus/adapters/doubao.py) — all five expose an
+  OpenAI-compatible Chat Completions endpoint, so each is a thin wrapper
+  around the shared `_openai_compatible` helper. Doubao follows `vllm.py`'s
+  pattern (`model` required and keyword-only) rather than a fixed
+  `DEFAULT_MODEL`, since Volcengine Ark identifies a deployed model by an
+  operator-provisioned endpoint ID, not a shared model name.
+- [ ] llama.cpp's own OpenAI-compatible server — not started; same template
+  as `vllm.py`/`ollama.py` to repeat.
 
 ## Level 4 — Agent Ecosystem
 

@@ -71,10 +71,11 @@
   `list_agents()` path against the live CLI.
 
 Current reference implementation is intentionally minimal: routing picks the
-first capable agent (no cost/trust/load selection — that's Level 6), and
-there is no policy enforcement of `task.constraints`/`task.risk` (Level 8).
-`NexusCore(audit=...)` (see Level 9) gives the trace tamper-evidence, but
-routing selection itself is still "first match," not real orchestration.
+first capable agent by default, or the highest-trust one when
+`NexusCore(trust=...)` is configured (Level 6, RFC-0004) — cost and load are
+still not factored in. There is no policy enforcement of
+`task.constraints`/`task.risk` (Level 8). `NexusCore(audit=...)` (see
+Level 9) gives the trace tamper-evidence.
 
 ## Level 3 — Model Universe
 
@@ -116,17 +117,34 @@ not yet decided.
 
 ## Level 6 — Evidence + Trust
 
-Not yet implemented (only identity signing exists so far — see
-`identity_crypto.py` under Level 1). Prior art worth studying before writing
-this RFC, found in this project's own workspace (2026-09-12 survey):
+- [x] RFC-0004: Evidence-Derived Trust Scoring —
+  [draft](docs/rfcs/0004-evidence-derived-trust.md), reference impl in
+  [`python/src/nexus/trust.py`](python/src/nexus/trust.py) (`TrustEvaluator`,
+  `TrustScore`) — scores an agent from its own historical Evidence (RFC-0001 §5),
+  weighted by `transformation` strength, minus a lessons-recurrence penalty.
+  Deliberately narrow: it cannot yet know whether evidence was later
+  contradicted or corroborated — that needs Level 7's verdicts.
+- [x] Wired into `NexusCore(trust=...)` — when more than one agent is
+  capable of an objective, the highest-scoring one is picked instead of
+  "first match" (ties, including all-zero-evidence, keep first-match order,
+  so `trust=None` — the default — is unaffected). Proven with a real
+  behavioral test, not just formula unit tests: two competing agents, the
+  worse one registered first, the better one still wins once trust is
+  configured.
+- [ ] Recurrence penalty attribution — `lessons.py`'s `Lesson` has no
+  `agent_id` field yet, so `recurrences` must be supplied by the caller
+  today; wiring an actual lesson-to-agent link is open (see RFC-0004 Open
+  Questions).
+
+Prior art referenced but not copied (2026-09-12 survey):
 `Ruflo/v3/@claude-flow/plugin-agent-federation` has a real trust-tier model
 (`TrustLevel` enum + `TrustEvaluator`), a PII-redaction pipeline gating what
 crosses a trust boundary, and a `PolicyEngine` that authorizes messages by
 trust level + message type + size — plus a "legacy vs. enforce" claim-checker
 mode for rolling out policy without breaking existing callers, a pattern
-worth reusing when Nexus's own Policy layer (Level 8) is designed. Not
-copied here (it is a large, separate MIT-licensed system) — referenced for
-when this level's RFC gets written.
+worth reusing when Nexus's own Policy layer (Level 8) is designed. That
+system scores *identity/behavior* trust for authorization; RFC-0004 scores
+*evidence quality* for routing — different questions, not a duplicate.
 
 ## Level 7 — Debate + Arbitration
 

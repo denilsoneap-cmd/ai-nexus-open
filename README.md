@@ -96,7 +96,7 @@ locally:
 cd python
 python -m venv .venv && .venv/Scripts/activate   # or source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                       # 110 tests + 1 skipped (pip install -e ".[dev]" pulls in the optional crypto extra;
+pytest                       # 126 tests + 1 skipped (pip install -e ".[dev]" pulls in the optional crypto extra;
                               # the skipped test hits the real ruflo CLI — set NEXUS_RUFLO_INTEGRATION=1 to run it)
 python examples/quickstart.py
 python examples/full_stack.py
@@ -104,8 +104,9 @@ python examples/full_stack.py
 
 `NexusCore` is a single-process, in-memory reference orchestrator, not a
 networked one — it exists to prove the object model round-trips through
-something runnable and to give real routing/trust-informed selection
-(ROADMAP Level 6) a seam to plug into. Real interoperability with other
+something runnable. Agent selection defaults to "first capable agent," or
+weighs evidence-derived trust (RFC-0004, [`nexus/trust.py`](python/src/nexus/trust.py))
+when `NexusCore(trust=TrustEvaluator())` is configured. Real interoperability with other
 agents follows **RFC-0003 (A2A Alignment)**: Nexus adopts the
 [Agent2Agent protocol](https://a2a-protocol.org) as its wire format rather
 than inventing its own — see [`python/src/nexus/a2a.py`](python/src/nexus/a2a.py)

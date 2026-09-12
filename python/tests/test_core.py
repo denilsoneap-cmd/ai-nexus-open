@@ -1,7 +1,8 @@
 from nexus.agent import Agent
 from nexus.audit import AuditLog
 from nexus.core import NexusCore
-from nexus.protocol import Task, validate_envelope
+from nexus.protocol import Result, Task, validate_envelope
+from nexus.trust import TrustEvaluator
 
 
 def make_core_with_tax_agent() -> tuple[NexusCore, Agent]:
@@ -108,3 +109,50 @@ def test_route_without_audit_log_does_not_error():
     core.register(agent)
     result_envelope = core.route("op")
     assert result_envelope["payload"]["output"]["ok"] is True
+
+
+def _register_good_and_bad_agents(core: NexusCore) -> None:
+    """`bad` is registered first (so first-match would pick it) but only
+    ever produces low-quality evidence; `good` produces high-quality
+    evidence. Both handle "shared_op" identically otherwise."""
+    bad = Agent(name="Bad", capabilities=["shared_op", "warm_up_bad"])
+    good = Agent(name="Good", capabilities=["shared_op", "warm_up_good"])
+
+    @bad.task("warm_up_bad")
+    def warm_bad(task: Task) -> Result:
+        ev = bad.make_evidence(claim="x", source="y", transformation="inferred", confidence=0.5)
+        return Result(task_id=task.id, status="success", output={}, evidence=[ev])
+
+    @good.task("warm_up_good")
+    def warm_good(task: Task) -> Result:
+        ev = good.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.95)
+        return Result(task_id=task.id, status="success", output={}, evidence=[ev])
+
+    @bad.task("shared_op")
+    def handle_bad(task: Task) -> dict:
+        return {"handled_by": "bad"}
+
+    @good.task("shared_op")
+    def handle_good(task: Task) -> dict:
+        return {"handled_by": "good"}
+
+    core.register(bad)
+    core.register(good)
+    core.route("warm_up_bad")
+    core.route("warm_up_good")
+
+
+def test_route_with_trust_evaluator_prefers_higher_scoring_agent():
+    core = NexusCore(trust=TrustEvaluator())
+    _register_good_and_bad_agents(core)
+
+    result_envelope = core.route("shared_op")
+    assert result_envelope["payload"]["output"]["handled_by"] == "good"
+
+
+def test_route_without_trust_evaluator_keeps_first_match_regardless_of_evidence():
+    core = NexusCore()  # trust=None — RFC-0004: unchanged behavior
+    _register_good_and_bad_agents(core)
+
+    result_envelope = core.route("shared_op")
+    assert result_envelope["payload"]["output"]["handled_by"] == "bad"

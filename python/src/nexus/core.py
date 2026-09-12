@@ -2,14 +2,16 @@
 
 This is a single-process, in-memory reference implementation: it exists to
 prove the RFC-0001/RFC-0002 wire format round-trips through something
-runnable, and to give Levels 6/7 (trust-informed selection, arbitration) a
-seam to plug into later. It intentionally does not:
+runnable. It intentionally does not:
 
 - talk to a real transport (MCP, HTTP, a queue) — see RFC-0001's transport
   bindings open question,
-- do capability-based routing beyond "first agent with a matching handler" —
-  real selection (cost, trust, load) is Level 6 (Evidence + Trust),
-- enforce `task.constraints` / `task.risk` — that is Level 8 (Policy + Security).
+- do capability-based routing beyond "first agent with a matching handler,"
+  unless a `trust` evaluator is supplied (RFC-0004, `nexus.trust`) — even
+  then, selection only weighs evidence quality, not cost or load, which
+  remain open,
+- enforce `task.constraints` / `task.risk` — that is Level 8 (Policy + Security,
+  not yet designed).
 
 Every envelope that passes through `route()` is recorded in `self.trace` in
 send order, which is the seed of Level 9 (Execution + Observability): a full
@@ -26,7 +28,7 @@ import uuid
 from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
-from .protocol import ErrorPayload, Task, envelope, validate_envelope
+from .protocol import ErrorPayload, Evidence, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
 
@@ -55,17 +57,43 @@ class AuditSink(Protocol):
     def append(self, event_type: str, actor: str, payload: dict[str, Any]) -> Any: ...
 
 
+class TrustSource(Protocol):
+    """Structural type for an optional Level 6 trust evaluator (RFC-0004,
+    see `nexus.trust.TrustEvaluator`). Same reasoning as `GraphSink`: a
+    shape (`.evaluate(...)` returning something with a `.score`), not a
+    concrete import of `nexus.trust`."""
+
+    def evaluate(self, agent_id: str, evidence: list[Evidence], recurrences: int = 0) -> Any: ...
+
+
 class NexusCore:
-    def __init__(self, graph: GraphSink | None = None, audit: AuditSink | None = None) -> None:
+    def __init__(
+        self,
+        graph: GraphSink | None = None,
+        audit: AuditSink | None = None,
+        trust: TrustSource | None = None,
+    ) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
         self.graph = graph
         self.audit = audit
+        self.trust = trust
 
     def _record(self, env: dict[str, Any]) -> None:
         self.trace.append(env)
         if self.audit is not None:
             self.audit.append(event_type=env["message_type"], actor=env["sender"]["agent_id"], payload=env)
+
+    def _historical_evidence(self) -> list[Evidence]:
+        """RFC-0004 §4: the evidence pool a trust score is computed from —
+        every Evidence entry attached to a `result` envelope recorded so far."""
+        pool: list[Evidence] = []
+        for env in self.trace:
+            if env.get("message_type") != "result":
+                continue
+            for e in env["payload"].get("evidence", []):
+                pool.append(Evidence.from_dict(e))
+        return pool
 
     def register(self, agent: Agent) -> None:
         self._agents[agent.identity.agent_id] = agent
@@ -127,7 +155,19 @@ class NexusCore:
             self._record(error_envelope)
             return error_envelope
 
-        agent = candidates[0]  # Level 6 will replace this with real selection.
+        agent = candidates[0]
+        if self.trust is not None and len(candidates) > 1:
+            # RFC-0004 §4: pick the highest-trust candidate; ties (including
+            # the common all-zero-evidence case) keep first-match order, so
+            # behavior with no trust evaluator configured, or no evidence
+            # on file yet, is unchanged from before this RFC.
+            evidence_pool = self._historical_evidence()
+            best_score = -1.0
+            for candidate in candidates:
+                score = self.trust.evaluate(candidate.identity.agent_id, evidence_pool).score
+                if score > best_score:
+                    best_score = score
+                    agent = candidate
         task_node = f"task:{task.id}"
         if self.graph is not None:
             self.graph.add_edge(task_node, agent.identity.agent_id, "routed_to")

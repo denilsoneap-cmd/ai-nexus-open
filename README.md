@@ -100,6 +100,7 @@ pytest                       # 155 tests + 1 skipped (pip install -e ".[dev]" pu
                               # the skipped test hits the real ruflo CLI — set NEXUS_RUFLO_INTEGRATION=1 to run it)
 python examples/quickstart.py
 python examples/full_stack.py
+python examples/complete_pipeline.py   # graph + audit + trust + arbitration + policy, all at once
 ```
 
 `NexusCore` is a single-process, in-memory reference orchestrator, not a

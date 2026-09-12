@@ -339,7 +339,17 @@ a factory producing a plain `Agent`, no core changes required.
   [`python/src/nexus/adapters/superpowers.py`](python/src/nexus/adapters/superpowers.py)
   (`make_skill_agent`, takes an injected skill-runner so no specific
   framework is load-bearing)
-- [ ] MCP transport binding (RFC-0001 open question)
+- [x] MCP transport binding (RFC-0001/RFC-0003's open question — "MCP
+  remains a Level 11 concern") — [`mcp.py`](python/src/nexus/adapters/mcp.py)
+  (`make_mcp_agent`, `StdioMCPTransport`, `initialize`/`list_tools`/`call_tool`).
+  Agent-to-*tool* connectivity (not agent-to-agent — that stays A2A/RFC-0003):
+  a Nexus Agent's task handler calls an MCP server's tool over the standard
+  stdio JSON-RPC transport. `StdioMCPTransport` is tested against a real
+  spawned fake MCP server (not just a mocked transport), same rigor as the
+  real local fake HTTP servers Level 3's adapters are tested against.
+  `make_mcp_agent` itself takes an already-initialized, injectable
+  `MCPTransport` (same seam pattern as `ruflo.py`'s `runner`), so its own
+  tests need no subprocess at all.
 
 ## Level 12 — Graph Intelligence
 

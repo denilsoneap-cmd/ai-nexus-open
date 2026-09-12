@@ -38,7 +38,14 @@ def _new_message_id() -> str:
 # ---------------------------------------------------------------------------
 
 
-def to_agent_card(identity: AgentIdentity) -> dict[str, Any]:
+def to_agent_card(identity: AgentIdentity, url: str | None = None) -> dict[str, Any]:
+    """`url`, when given, is where this agent is actually reachable over
+    the network (e.g. a `nexus.transport.a2a_http.build_app` server's base
+    URL) — the piece Level 4's discovery-to-dispatch gap needed:
+    `nexus.transport.a2a_http.dispatch_via_card` reads it back out to
+    place a real call. Omitted (the default) for an agent that is only
+    ever reachable in-process, e.g. one only ever published to an
+    `InMemoryRegistry`/`FileRegistry` for same-machine discovery."""
     card: dict[str, Any] = {
         "id": identity.agent_id,
         "provider": {"name": identity.name or identity.agent_id},
@@ -50,6 +57,8 @@ def to_agent_card(identity: AgentIdentity) -> dict[str, Any]:
         card["metadata"]["role"] = identity.role
     if identity.model is not None:
         card["metadata"]["model"] = identity.model
+    if url is not None:
+        card["url"] = url
     return card
 
 

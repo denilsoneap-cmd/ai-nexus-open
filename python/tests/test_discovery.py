@@ -24,6 +24,20 @@ def test_publish_and_get_round_trip(registry):
     assert card["provider"]["name"] == "Tax Specialist"
 
 
+def test_publish_without_url_omits_it(registry):
+    agent = make_tax_agent()
+    publish_agent(registry, agent)
+    card = registry.get(agent.identity.agent_id)
+    assert "url" not in card
+
+
+def test_publish_with_url_makes_the_card_remotely_dispatchable(registry):
+    agent = make_tax_agent()
+    publish_agent(registry, agent, url="http://127.0.0.1:9999")
+    card = registry.get(agent.identity.agent_id)
+    assert card["url"] == "http://127.0.0.1:9999"
+
+
 def test_get_returns_none_for_unknown_agent(registry):
     assert registry.get("agent:" + "0" * 32) is None
 

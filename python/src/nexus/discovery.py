@@ -135,9 +135,13 @@ class FileRegistry:
         return [card for card in self.all() if _has_skill(card, skill_name)]
 
 
-def publish_agent(registry: Registry, agent: Agent) -> None:
+def publish_agent(registry: Registry, agent: Agent, url: str | None = None) -> None:
     """RFC-0007 §4: publish a locally `register()`-ed Agent's current
     AgentCard to `registry`. Registration (local dispatch) and publication
     (discoverability) are independent — an agent can be one without the
-    other."""
-    registry.publish(to_agent_card(agent.identity))
+    other. `url`, when given, is where this agent is actually reachable
+    over the network (see `nexus.a2a.to_agent_card`) — pass the base URL
+    of a real `nexus.transport.a2a_http.build_app` server if this agent is
+    served that way, so a remote discoverer can actually dispatch to it,
+    not just find that it exists."""
+    registry.publish(to_agent_card(agent.identity, url=url))

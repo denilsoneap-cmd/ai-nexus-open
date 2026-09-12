@@ -40,10 +40,25 @@
   claim/complete/release locking, symlink/path-containment checks); good for
   same-machine/offline multi-agent setups, not one of A2A's own specified
   bindings (see RFC-0003 §1)
-- [ ] A real *networked* A2A transport (JSON-RPC/gRPC/HTTP server+client per
-  A2A's own spec) — still open; `a2a.py` maps object *shapes*, the
-  filesystem transport moves them locally, neither speaks to an external
-  A2A agent over a network yet
+- [x] A real *networked* A2A transport —
+  [`nexus/transport/a2a_http.py`](python/src/nexus/transport/a2a_http.py),
+  built on the official `a2a-sdk` (github.com/a2aproject/a2a-python,
+  Apache-2.0) rather than hand-rolled JSON-RPC. `build_app(core,
+  agent_card)` serves a `NexusCore` for real over HTTP (Starlette/uvicorn);
+  `call_remote_agent(base_url, objective, input)` calls one, discovering
+  it via a real `AgentCard` fetch first. Optional dependency (`pip install
+  "nexus-sdk[a2a]"`) — the base SDK stays dependency-free. Tested against
+  a real HTTP server on a real port, not a mock (6 tests: successful
+  round-trip, an unknown-objective error envelope arriving intact over the
+  wire, an unreachable-server transport error, two independent servers not
+  interfering with each other). `a2a-sdk` v1.1.2 turned out to be
+  protobuf-first internally — its `a2a.types` are `a2a_pb2` messages, not
+  the plain camelCase JSON dicts RFC-0003's own tables describe (the A2A
+  spec moved on since that RFC was written) — so this module builds
+  `a2a.types` objects directly via the SDK's own `a2a.helpers` rather than
+  reusing `nexus.a2a`'s dict-producing functions for the wire encoding,
+  keeping the same `nexus.objective`-in-metadata convention RFC-0003
+  already established so the two stay conceptually aligned.
 
 ## Level 2 — Nexus Core
 
@@ -177,10 +192,20 @@ bespoke because their wire shapes genuinely differ.
   JSON file per entity in a shared directory" idiom from
   `nexus.transport.filesystem`/`nexus.adapters.lessons`, with the same
   agent_id path-sanitization the 2026-09-12 review added everywhere else.
-- [ ] Discovery is not wired into `NexusCore` — finding a card via
-  `find_by_skill` does not mean the task can actually be dispatched to that
-  agent; that needs a transport binding to wherever it lives (still open,
-  RFC-0003 §1). Discovery and dispatch are deliberately independent for now.
+- [x] Discovery-to-dispatch gap closed — `to_agent_card`/`publish_agent`
+  gained an optional `url` (where a real
+  [`nexus.transport.a2a_http`](python/src/nexus/transport/a2a_http.py)
+  server for that agent is reachable), and
+  `nexus.transport.a2a_http.dispatch_via_card(card, objective, input)`
+  actually places the call — a discovered card is no longer just proof an
+  agent exists. `url` stays optional and omitted by default: discovery and
+  dispatch remain independent for any agent that's only ever meant to be
+  found in-process (an `InMemoryRegistry`/`FileRegistry` entry with no
+  `url` is simply not remotely dispatchable, not an error). Proven
+  end-to-end for real: publish an agent to a registry with a real server's
+  URL, discover it back as a fresh dict (no in-process reference to the
+  original `Agent` survives that), dispatch through the discovered card
+  alone, get a real `Result` back over HTTP.
 - [x] `FileRegistry(path, trusted_keys=...)` — optional agent_id -> Ed25519
   public key map (RFC-0007 Open Questions' flagged gap). When set,
   `get`/`all`/`find_by_skill` silently drop any card that isn't validly

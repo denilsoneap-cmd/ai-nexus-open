@@ -38,6 +38,16 @@ def test_agent_card_round_trip():
     assert restored == identity
 
 
+def test_agent_card_omits_url_by_default():
+    card = to_agent_card(make_identity())
+    assert "url" not in card
+
+
+def test_agent_card_carries_url_when_given():
+    card = to_agent_card(make_identity(), url="http://127.0.0.1:9999")
+    assert card["url"] == "http://127.0.0.1:9999"
+
+
 def test_task_to_a2a_message_carries_nexus_metadata():
     task = Task(id="task-1", objective="analyze_tax", input={"jurisdiction": "MG"},
                 constraints=["max_cost_usd:0.50"], risk="high")

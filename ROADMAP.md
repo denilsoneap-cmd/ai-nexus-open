@@ -59,14 +59,21 @@
   Python handler, replaceable per the vendor-neutrality principle.
 
 Current reference implementation is intentionally minimal: routing picks the
-first capable agent (no cost/trust/load selection — that's Level 6), there is
-no policy enforcement of `task.constraints`/`task.risk` (Level 8), and
-`NexusCore.trace` is a plain in-memory list, not real observability (Level 9).
+first capable agent (no cost/trust/load selection — that's Level 6), and
+there is no policy enforcement of `task.constraints`/`task.risk` (Level 8).
+`NexusCore(audit=...)` (see Level 9) gives the trace tamper-evidence, but
+routing selection itself is still "first match," not real orchestration.
 
 ## Level 3 — Model Universe
 
 Adapters for OpenAI, Anthropic, Google, Qwen, DeepSeek, ERNIE, Kimi, GLM,
 Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
+
+- [x] Registry freshness check — [`python/src/nexus/adapters/registry.py`](python/src/nexus/adapters/registry.py)
+  (`check_npm`/`check_pypi`/`compare_versions`), pattern lifted from this
+  project's own `mcp-tools/context7-mcp/index.js`, reimplemented in pure
+  Python (stdlib `urllib`, no dependency) — a small step toward a real Model
+  Registry: knowing when a referenced model/package version has gone stale.
 
 ## Level 4 — Agent Ecosystem
 
@@ -75,6 +82,15 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
 - [x] Obsidian vault connector — [`python/src/nexus/adapters/obsidian.py`](python/src/nexus/adapters/obsidian.py)
   (`ObsidianVault`, writes RFC-0001 §5 Evidence as real Markdown notes with
   YAML frontmatter — a plain folder, no Obsidian install needed to use or test it)
+- [x] Lessons-learned store — [`python/src/nexus/adapters/lessons.py`](python/src/nexus/adapters/lessons.py)
+  (`LessonStore`), ported faithfully from this project's own prior work at
+  `Mif-Oracle/scripts/agente_auditor.py` — refuses to record a lesson unless
+  its correction names a real mechanism (test/lint/hook/guide/restriction),
+  carrying over that project's own principle: "advice doesn't prevent
+  anything, a mechanism does." Repeated symptoms increment a `recurrences`
+  counter instead of duplicating the lesson. `compile_digest()` produces the
+  Markdown meant for session-start context injection, matching that
+  project's `carregar-licoes.sh` hook.
 
 Includes the "Great Minds" cognitive-model concept from the original vision
 (agent personas grounded in the documented thinking/methods of historical and
@@ -110,6 +126,13 @@ The original vision doc called out Observability as its own concern (tracing,
 metrics, audit log) without reserving it a level in this numbered sequence;
 it is grouped here with Execution since both are about what happens when a
 task actually runs, not about deciding what should run.
+
+- [x] Tamper-evident audit log — [`python/src/nexus/audit.py`](python/src/nexus/audit.py)
+  (`AuditLog`), hash-chained events adapted from
+  `JarvisSN/contracts/audit-event.schema.json`; `NexusCore(audit=...)` wires
+  it in optionally, alongside the plain `trace` list
+- [ ] Execution sandboxing, metrics, and a real (not just tamper-evident)
+  append-only log destination — still open
 
 ## Level 10 — Multimodal (vision, image, audio, voice, video)
 

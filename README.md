@@ -96,7 +96,7 @@ locally:
 cd python
 python -m venv .venv && .venv/Scripts/activate   # or source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                       # 90 tests (pip install -e ".[dev]" pulls in the optional crypto extra)
+pytest                       # 107 tests (pip install -e ".[dev]" pulls in the optional crypto extra)
 python examples/quickstart.py
 python examples/full_stack.py
 ```

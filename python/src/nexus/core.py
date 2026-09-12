@@ -10,8 +10,8 @@ runnable. It intentionally does not:
   unless a `trust` evaluator is supplied (RFC-0004, `nexus.trust`) — even
   then, selection only weighs evidence quality, not cost or load, which
   remain open,
-- enforce `task.constraints` / `task.risk` — that is Level 8 (Policy + Security,
-  not yet designed).
+- enforce `task.constraints` — that remains open (RFC-0006 §1); `task.risk`
+  is now gated when a `policy` engine is supplied (RFC-0006, `nexus.policy`).
 
 Every envelope that passes through `route()` is recorded in `self.trace` in
 send order, which is the seed of Level 9 (Execution + Observability): a full
@@ -76,6 +76,13 @@ class ArbitrationSource(Protocol):
     ) -> Verdict: ...
 
 
+class PolicySource(Protocol):
+    """Structural type for an optional Level 8 policy engine (RFC-0006,
+    see `nexus.policy.PolicyEngine`). Same reasoning as `GraphSink`."""
+
+    def evaluate(self, task: Task) -> Any: ...
+
+
 class NexusCore:
     def __init__(
         self,
@@ -83,6 +90,7 @@ class NexusCore:
         audit: AuditSink | None = None,
         trust: TrustSource | None = None,
         arbiter: ArbitrationSource | None = None,
+        policy: PolicySource | None = None,
     ) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
@@ -90,6 +98,7 @@ class NexusCore:
         self.audit = audit
         self.trust = trust
         self.arbiter = arbiter
+        self.policy = policy
 
     def _record(self, env: dict[str, Any]) -> None:
         self.trace.append(env)
@@ -148,6 +157,25 @@ class NexusCore:
         )
         validate_envelope(task_envelope)
         self._record(task_envelope)
+
+        if self.policy is not None:
+            decision = self.policy.evaluate(task)
+            if decision.action != "allow":
+                err = ErrorPayload(
+                    task_id=task.id,
+                    error_code="policy_blocked",
+                    message=decision.reason,
+                    retryable=False,
+                )
+                policy_envelope = envelope(
+                    message_type="error",
+                    sender=CORE_SENDER,
+                    payload=err.to_payload(),
+                    correlation_id=task_envelope["message_id"],
+                )
+                validate_envelope(policy_envelope)
+                self._record(policy_envelope)
+                return policy_envelope
 
         candidates = self.find_by_objective(objective)
         if not candidates:

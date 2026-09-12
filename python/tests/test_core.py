@@ -4,6 +4,7 @@ from nexus.agent import Agent, CapabilityUnavailable
 from nexus.arbitration import ArbitrationEngine
 from nexus.audit import AuditLog
 from nexus.core import NexusCore
+from nexus.policy import PolicyEngine
 from nexus.protocol import Result, Task, validate_envelope
 from nexus.trust import TrustEvaluator
 
@@ -247,3 +248,69 @@ def test_debate_can_target_a_subset_of_agents_by_id():
     verdict = core.debate("op", agent_ids=[a.identity.agent_id])
     assert len(verdict.candidates) == 1
     assert verdict.winner_agent_id == a.identity.agent_id
+
+
+def _register_simple_agent(core: NexusCore, objective: str = "op") -> Agent:
+    agent = Agent(name="A", capabilities=[objective])
+
+    @agent.task(objective)
+    def handler(task: Task) -> dict:
+        return {"ok": True}
+
+    core.register(agent)
+    return agent
+
+
+def test_route_without_policy_ignores_risk_entirely():
+    core = NexusCore()  # policy=None — unaffected by this RFC
+    _register_simple_agent(core)
+    result_envelope = core.route("op", risk="critical")
+    assert result_envelope["message_type"] == "result"
+
+
+def test_route_blocks_critical_risk_task_with_no_approver():
+    core = NexusCore(policy=PolicyEngine())
+    _register_simple_agent(core)
+    result_envelope = core.route("op", risk="critical")
+    assert result_envelope["message_type"] == "error"
+    assert result_envelope["payload"]["error_code"] == "policy_blocked"
+
+
+def test_route_allows_low_risk_task_through_policy():
+    core = NexusCore(policy=PolicyEngine())
+    _register_simple_agent(core)
+    result_envelope = core.route("op", risk="low")
+    assert result_envelope["message_type"] == "result"
+
+
+def test_route_with_approver_allows_critical_risk_task():
+    core = NexusCore(policy=PolicyEngine(approver=lambda task, decision: True))
+    _register_simple_agent(core)
+    result_envelope = core.route("op", risk="critical")
+    assert result_envelope["message_type"] == "result"
+
+
+def test_blocked_task_still_appears_in_trace_and_audit():
+    audit = AuditLog()
+    core = NexusCore(policy=PolicyEngine(), audit=audit)
+    _register_simple_agent(core)
+    core.route("op", risk="critical")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert [e.event_type for e in audit.events()] == ["task", "error"]
+    assert audit.verify() is True
+
+
+def test_policy_blocked_task_never_reaches_the_agent():
+    core = NexusCore(policy=PolicyEngine())
+    calls = []
+    agent = Agent(name="A", capabilities=["op"])
+
+    @agent.task("op")
+    def handler(task: Task) -> dict:
+        calls.append(task.id)
+        return {"ok": True}
+
+    core.register(agent)
+    core.route("op", risk="critical")
+    assert calls == []

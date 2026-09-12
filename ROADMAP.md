@@ -73,9 +73,9 @@
 Current reference implementation is intentionally minimal: routing picks the
 first capable agent by default, or the highest-trust one when
 `NexusCore(trust=...)` is configured (Level 6, RFC-0004) — cost and load are
-still not factored in. There is no policy enforcement of
-`task.constraints`/`task.risk` (Level 8). `NexusCore(audit=...)` (see
-Level 9) gives the trace tamper-evidence.
+still not factored in. `task.risk` is gated when `NexusCore(policy=...)` is
+configured (Level 8, RFC-0006); `task.constraints` is still not enforced.
+`NexusCore(audit=...)` (see Level 9) gives the trace tamper-evidence.
 
 ## Level 3 — Model Universe
 
@@ -168,6 +168,24 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   on how many agents get debated.
 
 ## Level 8 — Policy + Security
+
+- [x] RFC-0006: Policy — Risk-Based Approval Gating —
+  [draft](docs/rfcs/0006-policy-risk-gating.md), reference impl in
+  [`python/src/nexus/policy.py`](python/src/nexus/policy.py)
+  (`PolicyEngine`, `PolicyDecision`) — makes `task.risk` (RFC-0001 §4,
+  present but unenforced since Genesis) actually gate execution.
+  Fails closed: a task whose risk requires approval, with no `approver`
+  callback configured, is blocked, not allowed through.
+- [x] Wired into `NexusCore(policy=...)` — evaluated right after the task
+  envelope is recorded and before any agent lookup; a blocked task still
+  shows up in `trace`/`AuditLog` as an ordinary `error` envelope
+  (`error_code: "policy_blocked"`), and never reaches an agent's handler.
+- [ ] `task.constraints` enforcement (`"no_external_network"`,
+  `"max_cost_usd:..."`) — needs adapters to declare what they actually
+  touch; not designed yet (RFC-0006 §1/Open Questions).
+- [ ] `plan`/`simulate` (the first half of ARCHITECTURE.md principle 5's
+  pipeline) — needs agents to expose a dry-run capability; not designed yet.
+- [ ] Policy is not wired into `NexusCore.debate()`, only `route()`.
 
 ## Level 9 — Execution + Observability
 

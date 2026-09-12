@@ -82,11 +82,10 @@ configured (Level 8, RFC-0006); `task.constraints` is still not enforced.
 Adapters for OpenAI, Anthropic, Google, Qwen, DeepSeek, ERNIE, Kimi, GLM,
 Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
 
-Every vendor in that original list now has an adapter (13 total, 2026-09-12)
-except `llama.cpp` (its own server also speaks an OpenAI-compatible API —
-same template again, not yet done). `openai.py`/`deepseek.py`/
-`openrouter.py`/`qwen.py`/`ernie.py`/`kimi.py`/`glm.py`/`hunyuan.py`/
-`doubao.py` share one HTTP/error-handling/text-extraction helper
+Every vendor in that original list now has an adapter (14 total,
+2026-09-12). `openai.py`/`deepseek.py`/`openrouter.py`/`qwen.py`/
+`ernie.py`/`kimi.py`/`glm.py`/`hunyuan.py`/`doubao.py`/`llamacpp.py` share
+one HTTP/error-handling/text-extraction helper
 ([`nexus/adapters/_openai_compatible.py`](python/src/nexus/adapters/_openai_compatible.py))
 since they all speak the exact same Chat Completions wire format — added
 after a code review flagged the copy-paste cost of the first 4 before the
@@ -161,8 +160,11 @@ bespoke because their wire shapes genuinely differ.
   pattern (`model` required and keyword-only) rather than a fixed
   `DEFAULT_MODEL`, since Volcengine Ark identifies a deployed model by an
   operator-provisioned endpoint ID, not a shared model name.
-- [ ] llama.cpp's own OpenAI-compatible server — not started; same template
-  as `vllm.py`/`ollama.py` to repeat.
+- [x] Fourteenth adapter, third local one: llama.cpp —
+  [`llamacpp.py`](python/src/nexus/adapters/llamacpp.py) — `llama-server`'s
+  own OpenAI-compatible endpoint, same `vllm.py` shape (`model` required
+  and keyword-only, no `DEFAULT_MODEL`, optional API key). This closes out
+  every vendor named in this Level's original list.
 
 ## Level 4 — Agent Ecosystem
 

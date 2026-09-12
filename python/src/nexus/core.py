@@ -273,34 +273,82 @@ class NexusCore:
         since `Verdict` (unlike `route()`'s envelope) has no "blocked" shape
         to return instead.
 
-        Known limitation (RFC-0005 §5): unlike `route()`, this does not
-        record anything into `trace`/`audit`/`graph` yet — including a
-        policy block raised here."""
+        Now records into `trace`/`audit`/`graph` the same way `route()`
+        does (RFC-0005 §5's previous known limitation): the task envelope
+        first, a `routed_to` edge per candidate actually dispatched to, a
+        `produced_result`/`supported_by` edge for each one that answered,
+        and finally a `result` envelope for the arbitrated winner — or an
+        `error` envelope (recorded before the corresponding exception is
+        raised) for a policy block, no registered agent, or no usable
+        candidate, mirroring `route()`'s error paths."""
         if self.arbiter is None:
             raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
 
         task = Task(id=task_id or f"task-{uuid.uuid4().hex[:8]}", objective=objective, input=input or {}, risk=risk)
+        task_envelope = envelope(message_type="task", sender=CORE_SENDER, payload=task.to_payload())
+        validate_envelope(task_envelope)
+        self._record(task_envelope)
+
+        def _record_error(error_code: str, message: str) -> None:
+            err = ErrorPayload(task_id=task.id, error_code=error_code, message=message, retryable=False)
+            error_envelope = envelope(
+                message_type="error", sender=CORE_SENDER, payload=err.to_payload(),
+                correlation_id=task_envelope["message_id"],
+            )
+            validate_envelope(error_envelope)
+            self._record(error_envelope)
 
         if self.policy is not None:
             decision = self.policy.evaluate(task)
             if decision.action != "allow":
+                _record_error("policy_blocked", decision.reason)
                 raise PermissionError(f"debate() blocked by policy: {decision.reason}")
 
         pool = self.find_by_objective(objective)
         if agent_ids is not None:
             pool = [a for a in pool if a.identity.agent_id in agent_ids]
         if not pool:
+            message = f"No agent registered with a handler for objective {objective!r}."
+            _record_error("capability_unavailable", message)
             raise CapabilityUnavailable(f"no agent registered with a handler for objective {objective!r}")
 
+        task_node = f"task:{task.id}"
         candidates: list[Candidate] = []
         for candidate_agent in pool:
+            if self.graph is not None:
+                self.graph.add_edge(task_node, candidate_agent.identity.agent_id, "routed_to")
             try:
                 result = candidate_agent.handle(task)
             except (CapabilityUnavailable, TaskFailed):
                 continue  # a partial debate among agents that answered beats none at all
             candidates.append(Candidate(agent_id=candidate_agent.identity.agent_id, result=result))
+            if self.graph is not None:
+                self.graph.add_edge(
+                    candidate_agent.identity.agent_id, task_node, "produced_result",
+                    confidence=result.confidence if result.confidence is not None else 1.0,
+                )
+                for ev in result.evidence:
+                    evidence_node = f"evidence:{uuid.uuid4().hex[:12]}"
+                    self.graph.add_edge(
+                        task_node, evidence_node, "supported_by",
+                        confidence=ev.confidence,
+                        metadata={"claim": ev.claim, "source": ev.source, "agent_id": ev.agent_id},
+                    )
 
         if not candidates:
-            raise RuntimeError(f"no candidate produced a usable result for objective {objective!r}")
+            message = f"no candidate produced a usable result for objective {objective!r}"
+            _record_error("no_usable_candidate", message)
+            raise RuntimeError(message)
 
-        return self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())
+        verdict = self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())
+
+        winner = next(a for a in pool if a.identity.agent_id == verdict.winner_agent_id)
+        result_envelope = envelope(
+            message_type="result", sender=winner.identity.to_dict(minimal=True),
+            payload=verdict.winning_result.to_payload(),
+            correlation_id=task_envelope["message_id"],
+        )
+        validate_envelope(result_envelope)
+        self._record(result_envelope)
+
+        return verdict

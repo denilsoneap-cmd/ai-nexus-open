@@ -269,10 +269,16 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   debate. Proven with the literal scenario ARCHITECTURE.md principle 3
   names: three agents agreeing on an unsupported answer do not outvote one
   agent with real evidence.
-- [ ] Known gaps documented in RFC-0005 §5, not yet addressed: `debate()`
-  does not record into `trace`/`audit`/`graph` the way `route()` does;
-  fan-out is sequential, not parallel, with no timeout or quorum; no cap
-  on how many agents get debated.
+- [x] `debate()` now records into `trace`/`audit`/`graph` the same way
+  `route()` does (previously RFC-0005 §5's known gap): the task envelope
+  first, a `routed_to` edge per candidate actually dispatched to,
+  `produced_result`/`supported_by` edges for each one that answered, and a
+  `result` envelope for the arbitrated winner — or an `error` envelope
+  (recorded before the matching exception is raised, same as `route()`'s
+  error paths) for a policy block, no registered agent, or no candidate
+  producing a usable result.
+- [ ] Remaining RFC-0005 §5 gaps: fan-out is sequential, not parallel, with
+  no timeout or quorum; no cap on how many agents get debated.
 
 ## Level 8 — Policy + Security
 

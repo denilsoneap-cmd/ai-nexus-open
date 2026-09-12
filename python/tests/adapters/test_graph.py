@@ -1,7 +1,8 @@
 from nexus.adapters.graph import GraphStore
 from nexus.agent import Agent
+from nexus.arbitration import ArbitrationEngine
 from nexus.core import NexusCore
-from nexus.protocol import Task
+from nexus.protocol import Result, Task
 
 
 def test_add_edge_and_query_both_directions():
@@ -55,3 +56,47 @@ def test_nexus_core_without_graph_does_not_error():
     core.register(agent)
     result_envelope = core.route("op")
     assert result_envelope["payload"]["output"]["ok"] is True
+
+
+def test_debate_records_routed_to_produced_result_and_supported_by_edges():
+    graph = GraphStore()
+    core = NexusCore(graph=graph, arbiter=ArbitrationEngine())
+
+    weak = Agent(name="Weak", capabilities=["classify"])
+    strong = Agent(name="Strong", capabilities=["classify"])
+
+    @weak.task("classify")
+    def weak_handle(task: Task) -> Result:
+        ev = weak.make_evidence(claim="x", source="y", transformation="inferred", confidence=0.5)
+        return Result(task_id=task.id, output={"label": "spam"}, evidence=[ev])
+
+    @strong.task("classify")
+    def strong_handle(task: Task) -> Result:
+        ev = strong.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.95)
+        return Result(task_id=task.id, output={"label": "ham"}, evidence=[ev])
+
+    core.register(weak)
+    core.register(strong)
+
+    core.debate("classify", task_id="task-debate-graph-1")
+
+    task_node = "task:task-debate-graph-1"
+    routed_to_targets = {e["target_id"] for e in graph.edges_from(task_node) if e["relation"] == "routed_to"}
+    assert routed_to_targets == {weak.identity.agent_id, strong.identity.agent_id}
+    produced_result_sources = {e["source_id"] for e in graph.edges_to(task_node) if e["relation"] == "produced_result"}
+    assert produced_result_sources == {weak.identity.agent_id, strong.identity.agent_id}
+    relations = [e["relation"] for e in graph.edges_from(task_node)]
+    assert relations.count("supported_by") == 2
+
+
+def test_debate_without_graph_does_not_error():
+    core = NexusCore(arbiter=ArbitrationEngine())  # graph=None
+    agent = Agent(name="A", capabilities=["op"])
+
+    @agent.task("op")
+    def handler(task: Task):
+        return {"ok": True}
+
+    core.register(agent)
+    verdict = core.debate("op")
+    assert verdict.winning_result.output["ok"] is True

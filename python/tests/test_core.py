@@ -341,3 +341,64 @@ def test_debate_without_policy_configured_ignores_risk():
     _register_simple_agent(core)
     verdict = core.debate("op", risk="critical")  # should not raise
     assert verdict.winner_agent_id is not None
+
+
+def test_debate_records_task_and_result_in_trace():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    agent = _register_simple_agent(core)
+    verdict = core.debate("op")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "result"]
+    assert core.trace[1]["sender"]["agent_id"] == agent.identity.agent_id
+    assert core.trace[1]["correlation_id"] == core.trace[0]["message_id"]
+    assert core.trace[1]["payload"]["output"] == verdict.winning_result.output
+
+
+def test_debate_with_audit_log_records_task_and_result_events():
+    audit = AuditLog()
+    core = NexusCore(arbiter=ArbitrationEngine(), audit=audit)
+    _register_simple_agent(core)
+    core.debate("op")
+
+    events = audit.events()
+    assert [e.event_type for e in events] == ["task", "result"]
+    assert audit.verify() is True
+
+
+def test_debate_blocked_by_policy_appears_in_trace_before_raising():
+    audit = AuditLog()
+    core = NexusCore(arbiter=ArbitrationEngine(), policy=PolicyEngine(), audit=audit)
+    _register_simple_agent(core)
+
+    with pytest.raises(PermissionError):
+        core.debate("op", risk="critical")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert core.trace[1]["payload"]["error_code"] == "policy_blocked"
+    assert [e.event_type for e in audit.events()] == ["task", "error"]
+
+
+def test_debate_no_agent_registered_appears_in_trace_before_raising():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    with pytest.raises(CapabilityUnavailable):
+        core.debate("nonexistent_objective")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert core.trace[1]["payload"]["error_code"] == "capability_unavailable"
+
+
+def test_debate_no_usable_candidate_appears_in_trace_before_raising():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    failing = Agent(name="Failing", capabilities=["classify"])
+
+    @failing.task("classify")
+    def failing_handle(task: Task):
+        return failing.fail(task, error_code="boom", message="handler broke")
+
+    core.register(failing)
+
+    with pytest.raises(RuntimeError):
+        core.debate("classify")
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert core.trace[1]["payload"]["error_code"] == "no_usable_candidate"

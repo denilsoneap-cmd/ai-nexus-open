@@ -13,21 +13,27 @@
 
 ## Level 1 — Nexus Protocol
 
-- AI-to-AI message schema
-- Task schema
-- Evidence schema
-- Agent identity spec
+- [x] AI-to-AI message schema — RFC-0001, reference impl in [`python/src/nexus/protocol.py`](python/src/nexus/protocol.py)
+- [x] Task schema — RFC-0001 §4
+- [x] Evidence schema — RFC-0001 §5
+- [x] Agent identity spec — RFC-0002, reference impl in [`python/src/nexus/identity.py`](python/src/nexus/identity.py)
 
 ## Level 2 — Nexus Core
 
-- Router
-- Orchestrator
-- Message bus
-- Agent registry
-- Dogfood adapter: [Ruflo](https://github.com/ruvnet/ruflo) (claude-flow-based
+- [x] Router (capability/objective matching) — [`python/src/nexus/core.py`](python/src/nexus/core.py) `NexusCore.route()`
+- [x] Orchestrator (single-process, in-memory reference) — same module
+- [ ] Message bus (real transport — currently in-process function calls only)
+- [x] Agent registry — `NexusCore.register()` / `find_by_capability()`
+- [ ] Dogfood adapter: [Ruflo](https://github.com/ruvnet/ruflo) (claude-flow-based
   swarm orchestration) — already configured in this workspace (`.claude-flow/`,
-  `.swarm/`, `.mcp.json`); used as the first real orchestration backend behind
-  the Nexus Protocol, replaceable per the vendor-neutrality principle.
+  `.swarm/`, `.mcp.json`); not yet wired to `NexusCore` — next real milestone
+  is routing a Nexus task to a Ruflo-spawned agent instead of an in-process
+  Python handler, replaceable per the vendor-neutrality principle.
+
+Current reference implementation is intentionally minimal: routing picks the
+first capable agent (no cost/trust/load selection — that's Level 6), there is
+no policy enforcement of `task.constraints`/`task.risk` (Level 8), and
+`NexusCore.trace` is a plain in-memory list, not real observability (Level 9).
 
 ## Level 3 — Model Universe
 

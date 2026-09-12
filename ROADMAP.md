@@ -96,11 +96,15 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   call. Never exercised for real in this project's own tests (same
   precedent as `nexus.adapters.ruflo.cli_runner`) — tests point `api_url`
   at a local fake server.
-- [ ] OpenAI, Google, Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao,
-  and local models (Ollama, vLLM, llama.cpp) — not started. The Anthropic
-  adapter's shape (a thin `urllib` wrapper, API key resolved from an env
-  var, `task.input["prompt"]` in, `{text, model, usage}` out) is the
-  template to repeat, not a one-off.
+- [x] Second real model adapter: OpenAI —
+  [`python/src/nexus/adapters/openai.py`](python/src/nexus/adapters/openai.py)
+  (`make_openai_agent`, `call_openai`), same shape as the Anthropic adapter
+  exactly (`task.input["prompt"]` in, `{text, model, usage}` out) —
+  confirms the pattern generalizes rather than being an Anthropic-specific
+  one-off, and means `NexusCore.debate()` can now arbitrate between two
+  genuinely different model vendors, not just two Python functions.
+- [ ] Google, Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao, and local
+  models (Ollama, vLLM, llama.cpp) — not started; same template to repeat.
 
 ## Level 4 — Agent Ecosystem
 

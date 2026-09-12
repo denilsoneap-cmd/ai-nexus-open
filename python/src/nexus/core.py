@@ -48,11 +48,24 @@ class GraphSink(Protocol):
     ) -> str: ...
 
 
+class AuditSink(Protocol):
+    """Structural type for an optional Level 9 audit log (see `nexus.audit`).
+    Same reasoning as `GraphSink`: a shape, not a concrete import."""
+
+    def append(self, event_type: str, actor: str, payload: dict[str, Any]) -> Any: ...
+
+
 class NexusCore:
-    def __init__(self, graph: GraphSink | None = None) -> None:
+    def __init__(self, graph: GraphSink | None = None, audit: AuditSink | None = None) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
         self.graph = graph
+        self.audit = audit
+
+    def _record(self, env: dict[str, Any]) -> None:
+        self.trace.append(env)
+        if self.audit is not None:
+            self.audit.append(event_type=env["message_type"], actor=env["sender"]["agent_id"], payload=env)
 
     def register(self, agent: Agent) -> None:
         self._agents[agent.identity.agent_id] = agent
@@ -94,7 +107,7 @@ class NexusCore:
             payload=task.to_payload(),
         )
         validate_envelope(task_envelope)
-        self.trace.append(task_envelope)
+        self._record(task_envelope)
 
         candidates = self.find_by_objective(objective)
         if not candidates:
@@ -111,7 +124,7 @@ class NexusCore:
                 correlation_id=task_envelope["message_id"],
             )
             validate_envelope(error_envelope)
-            self.trace.append(error_envelope)
+            self._record(error_envelope)
             return error_envelope
 
         agent = candidates[0]  # Level 6 will replace this with real selection.
@@ -156,5 +169,5 @@ class NexusCore:
                         metadata={"claim": ev.claim, "source": ev.source, "agent_id": ev.agent_id},
                     )
         validate_envelope(result_envelope)
-        self.trace.append(result_envelope)
+        self._record(result_envelope)
         return result_envelope

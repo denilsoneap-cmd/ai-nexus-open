@@ -27,6 +27,13 @@
 - [x] Agent identity spec — now an A2A AgentCard (RFC-0003 §2); `agent_id`
   format from RFC-0002 kept by convention, reference impl still in
   [`python/src/nexus/identity.py`](python/src/nexus/identity.py)
+- [x] AgentCard signing (A2A's optional `AgentCardSignature`) —
+  [`python/src/nexus/identity_crypto.py`](python/src/nexus/identity_crypto.py),
+  Ed25519 + canonical JSON, ported from the design of
+  `Ruflo/v3/@claude-flow/plugin-agent-federation` (persisted keypair,
+  sign/verify never disagree over JSON formatting because both operate on
+  the same canonicalized bytes). Optional dependency (`pip install
+  "nexus-sdk[crypto]"`) — the base SDK stays dependency-free.
 - [x] Filesystem Message Bus binding — [`python/src/nexus/transport/filesystem.py`](python/src/nexus/transport/filesystem.py)
   (`FilesystemTransport`), ported from this project's own prior work in
   `Comunicacao Claude Gpt/CCG-1.2/ccg12.py` (atomic exclusive writes,
@@ -80,6 +87,18 @@ already implemented. Source list and licensing terms are an open question,
 not yet decided.
 
 ## Level 6 — Evidence + Trust
+
+Not yet implemented (only identity signing exists so far — see
+`identity_crypto.py` under Level 1). Prior art worth studying before writing
+this RFC, found in this project's own workspace (2026-09-12 survey):
+`Ruflo/v3/@claude-flow/plugin-agent-federation` has a real trust-tier model
+(`TrustLevel` enum + `TrustEvaluator`), a PII-redaction pipeline gating what
+crosses a trust boundary, and a `PolicyEngine` that authorizes messages by
+trust level + message type + size — plus a "legacy vs. enforce" claim-checker
+mode for rolling out policy without breaking existing callers, a pattern
+worth reusing when Nexus's own Policy layer (Level 8) is designed. Not
+copied here (it is a large, separate MIT-licensed system) — referenced for
+when this level's RFC gets written.
 
 ## Level 7 — Debate + Arbitration
 

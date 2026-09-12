@@ -1,4 +1,5 @@
 from nexus.agent import Agent
+from nexus.audit import AuditLog
 from nexus.core import NexusCore
 from nexus.protocol import Task, validate_envelope
 
@@ -77,3 +78,33 @@ def test_route_picks_first_capable_agent_when_multiple_registered():
 
     result_envelope = core.route("shared_op")
     assert result_envelope["payload"]["output"]["handled_by"] == "A"
+
+
+def test_route_with_audit_log_records_task_and_result_events():
+    audit = AuditLog()
+    core = NexusCore(audit=audit)
+    agent = Agent(name="Tax Specialist", capabilities=["tax_analysis"])
+
+    @agent.task("analyze_tax")
+    def analyze(task: Task) -> dict:
+        return {"tax_rate": 0.18}
+
+    core.register(agent)
+    core.route("analyze_tax")
+
+    events = audit.events()
+    assert [e.event_type for e in events] == ["task", "result"]
+    assert audit.verify() is True
+
+
+def test_route_without_audit_log_does_not_error():
+    core = NexusCore()  # audit=None
+    agent = Agent(name="A", capabilities=["x"])
+
+    @agent.task("op")
+    def handler(task: Task) -> dict:
+        return {"ok": True}
+
+    core.register(agent)
+    result_envelope = core.route("op")
+    assert result_envelope["payload"]["output"]["ok"] is True

@@ -5,13 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nexus-sdk"
 version = "0.1.0"
-description = "Reference Python implementation of the Nexus Protocol (RFC-0001, RFC-0002)."
+description = "Reference Python implementation of the Nexus Protocol, aligned to A2A (RFC-0003)."
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+crypto = ["cryptography>=42"]
+dev = ["pytest>=7", "cryptography>=42"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

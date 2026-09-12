@@ -67,6 +67,16 @@ class TrustSource(Protocol):
     def evaluate(self, agent_id: str, evidence: list[Evidence], recurrences: int = 0) -> Any: ...
 
 
+class LessonSource(Protocol):
+    """Structural type for an optional Level 5 lessons store (see
+    `nexus.adapters.lessons.LessonStore`). Same reasoning as `GraphSink`.
+    Closes RFC-0004's previously-open lesson-to-agent link: when supplied
+    alongside `trust`, `route()` looks up each candidate's own recurrence
+    count instead of the caller having to already know and pass it."""
+
+    def recurrences_for(self, agent_id: str) -> int: ...
+
+
 class ArbitrationSource(Protocol):
     """Structural type for an optional Level 7 arbitration engine (RFC-0005,
     see `nexus.arbitration.ArbitrationEngine`). Same reasoning as `GraphSink`."""
@@ -91,6 +101,7 @@ class NexusCore:
         trust: TrustSource | None = None,
         arbiter: ArbitrationSource | None = None,
         policy: PolicySource | None = None,
+        lessons: LessonSource | None = None,
     ) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
@@ -99,6 +110,7 @@ class NexusCore:
         self.trust = trust
         self.arbiter = arbiter
         self.policy = policy
+        self.lessons = lessons
 
     def _record(self, env: dict[str, Any]) -> None:
         self.trace.append(env)
@@ -204,7 +216,11 @@ class NexusCore:
             evidence_pool = self._historical_evidence()
             best_score = -1.0
             for candidate in candidates:
-                score = self.trust.evaluate(candidate.identity.agent_id, evidence_pool).score
+                recurrences = (
+                    self.lessons.recurrences_for(candidate.identity.agent_id)
+                    if self.lessons is not None else 0
+                )
+                score = self.trust.evaluate(candidate.identity.agent_id, evidence_pool, recurrences).score
                 if score > best_score:
                     best_score = score
                     agent = candidate

@@ -81,3 +81,37 @@ def test_lessons_persist_across_store_instances(tmp_path):
     LessonStore(tmp_path).record(symptom="X", correction="Added a test for X")
     reopened = LessonStore(tmp_path)
     assert len(reopened.all()) == 1
+
+
+def test_record_attributes_agent_id(tmp_path):
+    store = LessonStore(tmp_path)
+    lesson = store.record(symptom="X", correction="Added a test for X", agent_id="agent:a")
+    assert lesson.agent_id == "agent:a"
+
+
+def test_recurrence_does_not_reattribute_agent_id(tmp_path):
+    store = LessonStore(tmp_path)
+    store.record(symptom="X", correction="Added a test for X", agent_id="agent:a")
+    second = store.record(symptom="X", correction="Hardened the test", agent_id="agent:b")
+    assert second.recurrences == 1
+    assert second.agent_id == "agent:a"  # first attribution is kept, not overwritten
+
+
+def test_recurrences_for_sums_across_lessons_attributed_to_the_agent(tmp_path):
+    store = LessonStore(tmp_path)
+    store.record(symptom="X", correction="Added a test for X", agent_id="agent:a")
+    store.record(symptom="X", correction="Hardened the test", agent_id="agent:a")  # recurrence -> 1
+    store.record(symptom="Y", correction="Added a lint rule for Y", agent_id="agent:a")
+    store.record(symptom="Y", correction="Hardened the lint rule", agent_id="agent:a")  # recurrence -> 1
+    store.record(symptom="Z", correction="Added a hook for Z", agent_id="agent:b")
+
+    assert store.recurrences_for("agent:a") == 2
+    assert store.recurrences_for("agent:b") == 0
+    assert store.recurrences_for("agent:unknown") == 0
+
+
+def test_recurrences_for_ignores_lessons_with_no_agent_id(tmp_path):
+    store = LessonStore(tmp_path)
+    store.record(symptom="X", correction="Added a test for X")  # no agent_id
+    store.record(symptom="X", correction="Hardened the test")
+    assert store.recurrences_for("agent:a") == 0

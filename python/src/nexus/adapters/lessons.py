@@ -22,6 +22,15 @@ Recording the same symptom twice increments `recurrences` instead of
 duplicating the lesson — a repeat means the mechanism didn't hold, which
 `compile_digest()` surfaces first and marks REPEATED, matching the source
 project's own prioritization.
+
+`agent_id` (optional) attributes a lesson to whichever agent's mistake
+first produced it — set once at creation and never overwritten by a later
+recurrence, consistent with every other field here (only `recurrences`
+itself changes on repeat). `recurrences_for()` sums an agent's recurrences
+across every lesson attributed to it — the missing link RFC-0004 (see
+`nexus.trust.TrustEvaluator`) left as an open question: previously a
+caller had to already know and pass an agent's recurrence count by hand;
+now `NexusCore(lessons=...)` can compute it automatically before scoring.
 """
 
 from __future__ import annotations
@@ -80,6 +89,7 @@ class Lesson:
     cause: str = ""
     recorded_at: str = field(default_factory=lambda: date.today().isoformat())
     recurrences: int = 0
+    agent_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -96,7 +106,7 @@ class LessonStore:
 
     def record(
         self, symptom: str, correction: str, rule: str | None = None,
-        layer: str = "Guides", cause: str = "",
+        layer: str = "Guides", cause: str = "", agent_id: str | None = None,
     ) -> Lesson:
         if is_vague(correction):
             raise LessonRejected(
@@ -112,6 +122,9 @@ class LessonStore:
         signature = _slug(symptom)
         existing = self._load(signature)
         if existing is not None:
+            # agent_id is not reattributed on a recurrence, same as every
+            # other field here (correction/mechanism/layer/cause) — only
+            # recurrences itself changes on repeat.
             existing.recurrences += 1
             self._save(existing)
             return existing
@@ -119,9 +132,16 @@ class LessonStore:
         lesson = Lesson(
             signature=signature, symptom=symptom, correction=correction,
             mechanism=mechanism, layer=layer, rule=rule or symptom, cause=cause,
+            agent_id=agent_id,
         )
         self._save(lesson)
         return lesson
+
+    def recurrences_for(self, agent_id: str) -> int:
+        """RFC-0004's previously-open lesson-to-agent link: total
+        recurrences across every lesson attributed to `agent_id`, ready to
+        pass straight into `TrustEvaluator.evaluate(..., recurrences=...)`."""
+        return sum(lesson.recurrences for lesson in self.all() if lesson.agent_id == agent_id)
 
     def _file(self, signature: str) -> Path:
         return self.path / f"{signature}.json"

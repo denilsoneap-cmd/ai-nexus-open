@@ -162,6 +162,59 @@ def test_route_without_trust_evaluator_keeps_first_match_regardless_of_evidence(
     assert result_envelope["payload"]["output"]["handled_by"] == "bad"
 
 
+def test_route_with_lessons_penalizes_agent_with_recurring_lessons(tmp_path):
+    """RFC-0004's previously-open lesson-to-agent link: two agents would
+    otherwise tie on evidence strength, but one of them has a recurring
+    lesson on file — NexusCore(trust=..., lessons=...) should look that up
+    automatically and prefer the other agent, without the caller passing
+    any recurrence count by hand."""
+    from nexus.adapters.lessons import LessonStore
+
+    lessons = LessonStore(tmp_path)
+    core = NexusCore(trust=TrustEvaluator(), lessons=lessons)
+
+    flaky = Agent(name="Flaky", capabilities=["shared_op", "warm_up_flaky"])
+    steady = Agent(name="Steady", capabilities=["shared_op", "warm_up_steady"])
+
+    @flaky.task("warm_up_flaky")
+    def warm_flaky(task: Task) -> Result:
+        ev = flaky.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.9)
+        return Result(task_id=task.id, status="success", output={}, evidence=[ev])
+
+    @steady.task("warm_up_steady")
+    def warm_steady(task: Task) -> Result:
+        ev = steady.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.9)
+        return Result(task_id=task.id, status="success", output={}, evidence=[ev])
+
+    @flaky.task("shared_op")
+    def handle_flaky(task: Task) -> dict:
+        return {"handled_by": "flaky"}
+
+    @steady.task("shared_op")
+    def handle_steady(task: Task) -> dict:
+        return {"handled_by": "steady"}
+
+    core.register(flaky)
+    core.register(steady)
+    core.route("warm_up_flaky")
+    core.route("warm_up_steady")
+
+    # Identical evidence quality so far — first-match order would pick "flaky".
+    assert core.route("shared_op")["payload"]["output"]["handled_by"] == "flaky"
+
+    lessons.record(symptom="Flaky broke prod", correction="Added a hook", agent_id=flaky.identity.agent_id)
+    lessons.record(symptom="Flaky broke prod", correction="Hardened the hook", agent_id=flaky.identity.agent_id)
+
+    assert core.route("shared_op")["payload"]["output"]["handled_by"] == "steady"
+
+
+def test_route_with_trust_but_without_lessons_ignores_recurrences():
+    core = NexusCore(trust=TrustEvaluator())  # lessons=None — unaffected by this feature
+    _register_good_and_bad_agents(core)
+    result_envelope = core.route("shared_op")
+    assert result_envelope["payload"]["output"]["handled_by"] == "good"
+
+
 def test_debate_requires_an_arbiter():
     core = NexusCore()  # arbiter=None
     agent = Agent(name="A", capabilities=["op"])

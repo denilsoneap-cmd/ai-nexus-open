@@ -238,10 +238,13 @@ not yet decided.
   behavioral test, not just formula unit tests: two competing agents, the
   worse one registered first, the better one still wins once trust is
   configured.
-- [ ] Recurrence penalty attribution — `lessons.py`'s `Lesson` has no
-  `agent_id` field yet, so `recurrences` must be supplied by the caller
-  today; wiring an actual lesson-to-agent link is open (see RFC-0004 Open
-  Questions).
+- [x] Recurrence penalty attribution — `Lesson` now carries an optional
+  `agent_id` (set once at creation, never reattributed on a later
+  recurrence — same as every other field there). `LessonStore.recurrences_for(agent_id)`
+  sums an agent's recurrences across every lesson attributed to it, and
+  `NexusCore(trust=..., lessons=...)` calls it automatically when scoring
+  candidates in `route()` — the caller no longer has to already know and
+  pass a recurrence count by hand (closes the RFC-0004 Open Questions gap).
 
 Prior art referenced but not copied (2026-09-12 survey):
 `Ruflo/v3/@claude-flow/plugin-agent-federation` has a real trust-tier model

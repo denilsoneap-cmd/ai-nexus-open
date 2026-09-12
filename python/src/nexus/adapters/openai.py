@@ -6,6 +6,12 @@ environment variable at agent-construction time — the point of Level 3 is
 that swapping one model provider for another is a config change, not a
 different integration pattern (ARCHITECTURE.md principle 1).
 
+The actual HTTP/error-handling/text-extraction plumbing lives in
+`nexus.adapters._openai_compatible`, shared with every other adapter that
+speaks this same wire format (`deepseek.py`, `openrouter.py`, `qwen.py`,
+`vllm.py`) — this file only supplies OpenAI's own URL, default model, error
+class, and agent-construction contract.
+
 Like `nexus.adapters.anthropic`, this calls a real, paid API and is never
 exercised for real in this project's own tests; tests point `api_url` at a
 local fake HTTP server.
@@ -13,14 +19,12 @@ local fake HTTP server.
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 from ..agent import Agent
 from ..protocol import ErrorPayload, Task
+from ._openai_compatible import extract_message_text, post_chat_completion
 
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 DEFAULT_MODEL = "gpt-4o-mini"  # cheapest current model — a sane default for a generic adapter
@@ -38,37 +42,10 @@ def call_openai(
     api_url: str = OPENAI_API_URL,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    body = json.dumps({
-        "model": model,
-        "max_completion_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        api_url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
+    return post_chat_completion(
+        prompt=prompt, model=model, api_url=api_url, timeout=timeout,
+        max_tokens=max_tokens, api_key=api_key, vendor="OpenAI", error_cls=OpenAIError,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise OpenAIError(f"OpenAI API error {exc.code}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise OpenAIError(f"OpenAI API unreachable: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise OpenAIError(f"OpenAI API returned invalid JSON: {exc}") from exc
-
-
-def _extract_text(response: dict[str, Any]) -> str:
-    choices = response.get("choices", [])
-    if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "") or ""
 
 
 def make_openai_agent(
@@ -103,7 +80,7 @@ def make_openai_agent(
         except OpenAIError as exc:
             return agent.fail(task, error_code="openai_api_error", message=str(exc), retryable=True)
         return {
-            "text": _extract_text(response),
+            "text": extract_message_text(response),
             "model": response.get("model", model),
             "usage": response.get("usage", {}),
         }

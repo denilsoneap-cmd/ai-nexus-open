@@ -3,9 +3,9 @@ DashScope OpenAI-compatible Chat Completions endpoint as a Nexus Agent,
 using stdlib `urllib` (no `dashscope`/`openai` SDK dependency). Same shape as
 `nexus.adapters.openai` on purpose (ARCHITECTURE.md principle 1): Qwen's
 compatible-mode API speaks the exact same request/response schema as OpenAI,
-so this adapter is a near-identical copy with a different base URL, default
-model, and API key variable — evidence the adapter template generalizes
-rather than being tied to any one vendor's wire format.
+so this adapter only supplies Qwen's own base URL, default model, error
+class, and API key variable — the shared HTTP/error-handling/text-extraction
+plumbing lives in `nexus.adapters._openai_compatible`.
 
 Like `nexus.adapters.openai`, this calls a real, paid API and is never
 exercised for real in this project's own tests; tests point `api_url` at a
@@ -14,14 +14,12 @@ local fake HTTP server.
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 from ..agent import Agent
 from ..protocol import ErrorPayload, Task
+from ._openai_compatible import extract_message_text, post_chat_completion
 
 QWEN_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 DEFAULT_MODEL = "qwen-turbo"  # cheapest current model — a sane default for a generic adapter
@@ -39,37 +37,10 @@ def call_qwen(
     api_url: str = QWEN_API_URL,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    body = json.dumps({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        api_url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
+    return post_chat_completion(
+        prompt=prompt, model=model, api_url=api_url, timeout=timeout,
+        max_tokens=max_tokens, api_key=api_key, vendor="Qwen", error_cls=QwenError,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise QwenError(f"Qwen API error {exc.code}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise QwenError(f"Qwen API unreachable: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise QwenError(f"Qwen API returned invalid JSON: {exc}") from exc
-
-
-def _extract_text(response: dict[str, Any]) -> str:
-    choices = response.get("choices", [])
-    if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "") or ""
 
 
 def make_qwen_agent(
@@ -105,7 +76,7 @@ def make_qwen_agent(
         except QwenError as exc:
             return agent.fail(task, error_code="qwen_api_error", message=str(exc), retryable=True)
         return {
-            "text": _extract_text(response),
+            "text": extract_message_text(response),
             "model": response.get("model", model),
             "usage": response.get("usage", {}),
         }

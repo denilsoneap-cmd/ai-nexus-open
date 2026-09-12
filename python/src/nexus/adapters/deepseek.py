@@ -2,8 +2,10 @@
 Completions API as a Nexus Agent, using stdlib `urllib` (no `openai` SDK
 dependency). Same shape as `nexus.adapters.openai`/`nexus.adapters.qwen` on
 purpose (ARCHITECTURE.md principle 1): DeepSeek's API speaks the exact same
-request/response schema as OpenAI, so this adapter is a near-identical copy
-with a different base URL, default model, and API key variable.
+request/response schema as OpenAI, so this adapter only supplies DeepSeek's
+own base URL, default model, error class, and API key variable — the shared
+HTTP/error-handling/text-extraction plumbing lives in
+`nexus.adapters._openai_compatible`.
 
 Like `nexus.adapters.openai`, this calls a real, paid API and is never
 exercised for real in this project's own tests; tests point `api_url` at a
@@ -12,14 +14,12 @@ local fake HTTP server.
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 from ..agent import Agent
 from ..protocol import ErrorPayload, Task
+from ._openai_compatible import extract_message_text, post_chat_completion
 
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"  # cheapest current model — a sane default for a generic adapter
@@ -37,37 +37,10 @@ def call_deepseek(
     api_url: str = DEEPSEEK_API_URL,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    body = json.dumps({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        api_url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
+    return post_chat_completion(
+        prompt=prompt, model=model, api_url=api_url, timeout=timeout,
+        max_tokens=max_tokens, api_key=api_key, vendor="DeepSeek", error_cls=DeepSeekError,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise DeepSeekError(f"DeepSeek API error {exc.code}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise DeepSeekError(f"DeepSeek API unreachable: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise DeepSeekError(f"DeepSeek API returned invalid JSON: {exc}") from exc
-
-
-def _extract_text(response: dict[str, Any]) -> str:
-    choices = response.get("choices", [])
-    if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "") or ""
 
 
 def make_deepseek_agent(
@@ -102,7 +75,7 @@ def make_deepseek_agent(
         except DeepSeekError as exc:
             return agent.fail(task, error_code="deepseek_api_error", message=str(exc), retryable=True)
         return {
-            "text": _extract_text(response),
+            "text": extract_message_text(response),
             "model": response.get("model", model),
             "usage": response.get("usage", {}),
         }

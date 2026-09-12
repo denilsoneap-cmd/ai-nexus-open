@@ -4,7 +4,10 @@ Same shape as `nexus.adapters.openai` on purpose: OpenRouter's API is
 OpenAI-compatible, and the whole point of Level 3 is that swapping one model
 provider (or, here, a provider that itself routes to dozens of models) for
 another is a config change, not a different integration pattern
-(ARCHITECTURE.md principle 1).
+(ARCHITECTURE.md principle 1). This adapter only supplies OpenRouter's own
+base URL, default model, error class, and API key variable — the shared
+HTTP/error-handling/text-extraction plumbing lives in
+`nexus.adapters._openai_compatible`.
 
 Like `nexus.adapters.openai`, this calls a real, paid API and is never
 exercised for real in this project's own tests; tests point `api_url` at a
@@ -13,14 +16,12 @@ local fake HTTP server.
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 from ..agent import Agent
 from ..protocol import ErrorPayload, Task
+from ._openai_compatible import extract_message_text, post_chat_completion
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-4o-mini"  # cheap, stable default — any OpenRouter model slug works
@@ -38,37 +39,10 @@ def call_openrouter(
     api_url: str = OPENROUTER_API_URL,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    body = json.dumps({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        api_url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
+    return post_chat_completion(
+        prompt=prompt, model=model, api_url=api_url, timeout=timeout,
+        max_tokens=max_tokens, api_key=api_key, vendor="OpenRouter", error_cls=OpenRouterError,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise OpenRouterError(f"OpenRouter API error {exc.code}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise OpenRouterError(f"OpenRouter API unreachable: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise OpenRouterError(f"OpenRouter API returned invalid JSON: {exc}") from exc
-
-
-def _extract_text(response: dict[str, Any]) -> str:
-    choices = response.get("choices", [])
-    if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "") or ""
 
 
 def make_openrouter_agent(
@@ -103,7 +77,7 @@ def make_openrouter_agent(
         except OpenRouterError as exc:
             return agent.fail(task, error_code="openrouter_api_error", message=str(exc), retryable=True)
         return {
-            "text": _extract_text(response),
+            "text": extract_message_text(response),
             "model": response.get("model", model),
             "usage": response.get("usage", {}),
         }

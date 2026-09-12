@@ -206,7 +206,10 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   touch; not designed yet (RFC-0006 §1/Open Questions).
 - [ ] `plan`/`simulate` (the first half of ARCHITECTURE.md principle 5's
   pipeline) — needs agents to expose a dry-run capability; not designed yet.
-- [ ] Policy is not wired into `NexusCore.debate()`, only `route()`.
+- [x] Policy also gates `NexusCore.debate()`, not just `route()` — fixed
+  same day it was flagged: leaving it unwired meant a caller could bypass
+  risk-based approval entirely by using `debate()` for the same objective.
+  `debate()` raises `PermissionError` on a non-"allow" decision.
 
 ## Level 9 — Execution + Observability
 

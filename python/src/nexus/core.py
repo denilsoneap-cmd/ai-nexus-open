@@ -258,18 +258,34 @@ class NexusCore:
         input: dict[str, Any] | None = None,
         agent_ids: list[str] | None = None,
         task_id: str | None = None,
+        risk: str | None = None,
     ) -> Verdict:
         """RFC-0005: send the same task to every agent capable of
         `objective` (or the subset named by `agent_ids`) and arbitrate their
         results. Requires `NexusCore(arbiter=...)` — unlike `route()`,
         there is no sane default for "no arbiter provided."
 
+        `risk` is gated by `self.policy` (RFC-0006) exactly like `route()`'s
+        — without this, a caller could bypass risk-based approval entirely
+        just by using `debate()` instead of `route()` for the same
+        objective, which would have quietly undermined RFC-0006's whole
+        guarantee. Raises `PermissionError` on a non-"allow" decision,
+        since `Verdict` (unlike `route()`'s envelope) has no "blocked" shape
+        to return instead.
+
         Known limitation (RFC-0005 §5): unlike `route()`, this does not
-        record anything into `trace`/`audit`/`graph` yet."""
+        record anything into `trace`/`audit`/`graph` yet — including a
+        policy block raised here."""
         if self.arbiter is None:
             raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
 
-        task = Task(id=task_id or f"task-{uuid.uuid4().hex[:8]}", objective=objective, input=input or {})
+        task = Task(id=task_id or f"task-{uuid.uuid4().hex[:8]}", objective=objective, input=input or {}, risk=risk)
+
+        if self.policy is not None:
+            decision = self.policy.evaluate(task)
+            if decision.action != "allow":
+                raise PermissionError(f"debate() blocked by policy: {decision.reason}")
+
         pool = self.find_by_objective(objective)
         if agent_ids is not None:
             pool = [a for a in pool if a.identity.agent_id in agent_ids]

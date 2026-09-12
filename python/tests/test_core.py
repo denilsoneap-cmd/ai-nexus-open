@@ -314,3 +314,30 @@ def test_policy_blocked_task_never_reaches_the_agent():
     core.register(agent)
     core.route("op", risk="critical")
     assert calls == []
+
+
+def test_debate_is_gated_by_policy_same_as_route():
+    """Regression: debate() used to ignore self.policy entirely — a caller
+    could bypass route()'s risk-based approval gate just by calling
+    debate() instead, for the exact same objective."""
+    core = NexusCore(arbiter=ArbitrationEngine(), policy=PolicyEngine())  # no approver — fails closed
+    _register_simple_agent(core)
+    with pytest.raises(PermissionError):
+        core.debate("op", risk="critical")
+
+
+def test_debate_proceeds_when_policy_approves():
+    core = NexusCore(
+        arbiter=ArbitrationEngine(),
+        policy=PolicyEngine(approver=lambda task, decision: True),
+    )
+    _register_simple_agent(core)
+    verdict = core.debate("op", risk="critical")
+    assert verdict.winner_agent_id is not None
+
+
+def test_debate_without_policy_configured_ignores_risk():
+    core = NexusCore(arbiter=ArbitrationEngine())  # policy=None
+    _register_simple_agent(core)
+    verdict = core.debate("op", risk="critical")  # should not raise
+    assert verdict.winner_agent_id is not None

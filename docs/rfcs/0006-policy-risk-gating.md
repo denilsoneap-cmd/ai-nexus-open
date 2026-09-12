@@ -184,7 +184,10 @@ existing behavior; no change to `route()`'s signature for existing callers.
   designed here; likely needs its own RFC once a real use case exists
   (e.g., simulating a `nexus.adapters.ruflo` spawn before actually calling
   a paid LLM provider).
-- Should policy apply to `NexusCore.debate()` as well as `route()`? Not
-  wired in this RFC — `debate()` already has its own documented gaps
-  (RFC-0005 §5); adding policy there is a follow-up, not bundled here to
-  keep this RFC's diff reviewable.
+- ~~Should policy apply to `NexusCore.debate()` as well as `route()`?~~
+  Resolved 2026-09-12, same day: leaving it unwired was a real gap, not a
+  deferrable one — a caller could bypass risk-based approval entirely by
+  calling `debate()` instead of `route()` for the same objective, silently
+  undermining this RFC's whole guarantee. `debate()` now takes a `risk`
+  parameter and raises `PermissionError` on a non-"allow" policy decision,
+  before any agent is called.

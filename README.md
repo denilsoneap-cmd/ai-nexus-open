@@ -96,13 +96,19 @@ locally:
 cd python
 python -m venv .venv && .venv/Scripts/activate   # or source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                       # 33 tests
+pytest                       # 59 tests
 python examples/quickstart.py
+python examples/full_stack.py
 ```
 
-This is a single-process, in-memory reference (`NexusCore`), not a networked
-orchestrator — it exists to prove the wire format round-trips through
-something runnable and to give Level 6 (real routing) a seam to plug into.
+`NexusCore` is a single-process, in-memory reference orchestrator, not a
+networked one — it exists to prove the object model round-trips through
+something runnable and to give real routing/trust-informed selection
+(ROADMAP Level 6) a seam to plug into. Real interoperability with other
+agents follows **RFC-0003 (A2A Alignment)**: Nexus adopts the
+[Agent2Agent protocol](https://a2a-protocol.org) as its wire format rather
+than inventing its own — see [`python/src/nexus/a2a.py`](python/src/nexus/a2a.py)
+for the object-to-A2A-shape mapping (AgentCard, Message, Task, Artifact).
 See the module docstrings in [`python/src/nexus/`](python/src/nexus/) for what
 each piece does and does not do yet.
 
@@ -127,9 +133,16 @@ core.register(agent)
 result_envelope = core.route("analyze_tax", input={"jurisdiction": "MG"})
 ```
 
-`result_envelope` is a plain dict conforming to RFC-0001 §1/§4.1 — the exact
-JSON another Nexus-compliant agent or orchestrator would receive over any
-transport.
+`result_envelope` is `NexusCore`'s internal reference shape. To produce the
+actual A2A `Task` another A2A-compliant agent or orchestrator would receive
+over the wire (RFC-0003), convert with `nexus.a2a`:
+
+```python
+from nexus.a2a import result_to_a2a_task
+from nexus.protocol import Result
+
+a2a_task = result_to_a2a_task(Result.from_payload(result_envelope["payload"]))
+```
 
 ## Security
 

@@ -7,16 +7,28 @@
 - [x] Governance
 - [x] License (Apache 2.0)
 - [x] RFC process
-- [x] RFC-0001: Nexus Protocol (AI-to-AI message/task/evidence schema) — [draft](docs/rfcs/0001-nexus-protocol.md)
-- [x] RFC-0002: Agent Identity — [draft](docs/rfcs/0002-agent-identity.md)
+- [x] RFC-0001: Nexus Protocol — [superseded](docs/rfcs/0001-nexus-protocol.md) by RFC-0003
+- [x] RFC-0002: Agent Identity — [superseded](docs/rfcs/0002-agent-identity.md) by RFC-0003
+- [x] RFC-0003: A2A Alignment — [draft](docs/rfcs/0003-a2a-alignment.md) (2026-09-12
+  survey found Google's Agent2Agent protocol already has the multi-vendor
+  adoption — Google/Microsoft/Amazon/Anthropic/OpenAI, 250+ orgs via the
+  Agentic AI Foundation — this project's own manifesto asks for; Nexus adopts
+  A2A as its wire format instead of competing with it, see RFC-0003 Motivation)
 - [ ] Repository structure finalized under the `ai-nexus-open` org
 
 ## Level 1 — Nexus Protocol
 
-- [x] AI-to-AI message schema — RFC-0001, reference impl in [`python/src/nexus/protocol.py`](python/src/nexus/protocol.py)
-- [x] Task schema — RFC-0001 §4
-- [x] Evidence schema — RFC-0001 §5
-- [x] Agent identity spec — RFC-0002, reference impl in [`python/src/nexus/identity.py`](python/src/nexus/identity.py)
+- [x] AI-to-AI message schema — now A2A's Message/Task/Artifact model
+  (RFC-0003), translated to/from Nexus's Python objects in
+  [`python/src/nexus/a2a.py`](python/src/nexus/a2a.py)
+- [x] Task schema — RFC-0003 §3 (`nexus.*` A2A metadata keys)
+- [x] Evidence schema — RFC-0001 §5, unchanged, now carried as a registered
+  A2A extension (RFC-0003 §4)
+- [x] Agent identity spec — now an A2A AgentCard (RFC-0003 §2); `agent_id`
+  format from RFC-0002 kept by convention, reference impl still in
+  [`python/src/nexus/identity.py`](python/src/nexus/identity.py)
+- [ ] A real A2A transport (JSON-RPC/gRPC/HTTP server+client) — `a2a.py`
+  today only maps object *shapes*, it does not send anything over a network
 
 ## Level 2 — Nexus Core
 

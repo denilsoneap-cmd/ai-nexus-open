@@ -1,9 +1,13 @@
 # RFC-0002: Agent Identity
 
-- **Status**: Draft
+- **Status**: Superseded by [RFC-0003](0003-a2a-alignment.md)
 - **Author(s)**: Denilson (Founder / Initial Maintainer)
 - **Created**: 2026-09-11
-- **Supersedes / Superseded by**: none (extends RFC-0001 §2 additively)
+- **Supersedes / Superseded by**: superseded by RFC-0003 (2026-09-12) — the
+  `agent_id` format here is still used by convention, but identity is now
+  expressed as an A2A AgentCard, not a bare `sender`/`receiver` object. Kept
+  as historical record for the reasoning behind `scope` and the absence of a
+  self-reported `trust` field, both of which still apply.
 
 ## Summary
 

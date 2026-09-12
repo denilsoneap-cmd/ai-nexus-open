@@ -1,9 +1,12 @@
 # RFC-0001: Nexus Protocol — AI-to-AI Message, Task, and Evidence Schema
 
-- **Status**: Draft
+- **Status**: Superseded by [RFC-0003](0003-a2a-alignment.md)
 - **Author(s)**: Denilson (Founder / Initial Maintainer)
 - **Created**: 2026-09-11
-- **Supersedes / Superseded by**: none
+- **Supersedes / Superseded by**: superseded by RFC-0003 (2026-09-12) —
+  Nexus adopts the Agent2Agent (A2A) protocol as its wire format instead of
+  the envelope defined here. Kept as historical record; the Evidence schema
+  (§5) is carried forward unchanged as an A2A extension.
 
 ## Summary
 

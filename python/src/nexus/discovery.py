@@ -15,6 +15,16 @@ same "plain files in a directory" idiom as `nexus.transport.filesystem` and
 Finding an agent's card here does not mean this project can call it — that
 still needs a transport binding to wherever that agent actually lives
 (RFC-0007 §5). This module is discovery, not dispatch.
+
+`FileRegistry` is a shared directory anyone with filesystem access can drop
+a card into (RFC-0007 Open Questions flags this as a real gap for untrusted
+writers) — pass it `trusted_keys` (agent_id -> Ed25519 public key hex, from
+`nexus.identity_crypto`) to make `get`/`all`/`find_by_skill` silently drop
+any card that isn't validly signed by the key already known for that
+agent_id, instead of returning whatever the last writer to that directory
+left there. `identity_crypto` (the optional `cryptography` dependency) is
+only imported when `trusted_keys` is actually used, so the base SDK stays
+dependency-free for every caller that doesn't need it.
 """
 
 from __future__ import annotations
@@ -72,12 +82,29 @@ def _safe_stem(agent_id: str) -> str:
 
 
 class FileRegistry:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, trusted_keys: dict[str, str] | None = None) -> None:
+        """`trusted_keys` (optional): agent_id -> Ed25519 public key hex.
+        When given, `get`/`all` (and `find_by_skill`, which is built on
+        `all`) treat a card as absent unless it carries a valid
+        `AgentCardSignature` for its `id` under this map — see the module
+        docstring. `None` (the default) preserves the original no-verification
+        behavior for callers who haven't set up a trust store yet."""
         self.path = Path(path)
         self.path.mkdir(parents=True, exist_ok=True)
+        self.trusted_keys = trusted_keys
 
     def _file(self, agent_id: str) -> Path:
         return self.path / f"{_safe_stem(agent_id)}.json"
+
+    def _is_trusted(self, card: dict[str, Any]) -> bool:
+        if self.trusted_keys is None:
+            return True
+        public_key = self.trusted_keys.get(card.get("id"))
+        if public_key is None:
+            return False
+        from .identity_crypto import verify_agent_card  # optional dependency — only needed here
+
+        return verify_agent_card(card, public_key)
 
     def publish(self, card: dict[str, Any]) -> None:
         # A registry entry is replaceable (unlike a transport message) — no
@@ -91,12 +118,17 @@ class FileRegistry:
         file = self._file(agent_id)
         if not file.exists():
             return None
-        return json.loads(file.read_text(encoding="utf-8"))
+        card = json.loads(file.read_text(encoding="utf-8"))
+        if not self._is_trusted(card):
+            return None
+        return card
 
     def all(self) -> list[dict[str, Any]]:
         cards = []
         for file in sorted(self.path.glob("*.json")):
-            cards.append(json.loads(file.read_text(encoding="utf-8")))
+            card = json.loads(file.read_text(encoding="utf-8"))
+            if self._is_trusted(card):
+                cards.append(card)
         return cards
 
     def find_by_skill(self, skill_name: str) -> list[dict[str, Any]]:

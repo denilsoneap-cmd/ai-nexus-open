@@ -181,9 +181,17 @@ bespoke because their wire shapes genuinely differ.
   `find_by_skill` does not mean the task can actually be dispatched to that
   agent; that needs a transport binding to wherever it lives (still open,
   RFC-0003 §1). Discovery and dispatch are deliberately independent for now.
-- [ ] No verification of a discovered card's `AgentCardSignature`
-  (`nexus.identity_crypto`) before trusting it — a real gap for any
-  `FileRegistry` shared with untrusted writers (RFC-0007 Open Questions).
+- [x] `FileRegistry(path, trusted_keys=...)` — optional agent_id -> Ed25519
+  public key map (RFC-0007 Open Questions' flagged gap). When set,
+  `get`/`all`/`find_by_skill` silently drop any card that isn't validly
+  signed (`nexus.identity_crypto.verify_agent_card`) by the key already
+  known for that agent_id, instead of trusting whatever the last writer to
+  a shared directory left there. `None` (default) keeps prior behavior for
+  callers without a trust store yet; `identity_crypto`'s `cryptography`
+  dependency is only imported when `trusted_keys` is actually used, so the
+  base SDK stays dependency-free otherwise. Still open: nothing populates
+  `trusted_keys` automatically (no key-distribution/pinning mechanism) —
+  callers must already know which public key belongs to which agent_id.
 - [ ] Agent Factory (dynamic agent creation/destruction) and Agent
   Reputation (the original vision's "GitHub for agents" idea) — not
   started; reputation substantially overlaps with Level 6's trust scoring

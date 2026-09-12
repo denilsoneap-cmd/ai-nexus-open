@@ -2,6 +2,7 @@ import pytest
 
 from nexus.agent import Agent
 from nexus.discovery import FileRegistry, InMemoryRegistry, publish_agent
+from nexus.identity import AgentIdentity
 
 
 @pytest.fixture(params=["memory", "file"])
@@ -86,3 +87,62 @@ def test_file_registry_sanitizes_path_traversal_in_agent_id(tmp_path):
     # nothing should have escaped the registry directory
     assert not any(tmp_path.glob("evil*"))
     assert registry.get("../../../../evil") is not None  # still round-trips within the sandbox
+
+
+def test_file_registry_without_trusted_keys_trusts_any_card(tmp_path):
+    # Default behavior, unchanged: no trust store configured means no
+    # verification, matching every other test above in this file.
+    registry = FileRegistry(tmp_path / "registry")
+    agent = make_tax_agent()
+    publish_agent(registry, agent)
+    assert registry.get(agent.identity.agent_id) is not None
+
+
+def test_file_registry_accepts_validly_signed_card(tmp_path):
+    from nexus.a2a import to_agent_card
+    from nexus.identity_crypto import generate_keypair, sign_agent_card
+
+    private_hex, public_hex = generate_keypair()
+    identity = AgentIdentity(name="Tax Specialist", capabilities=["tax_analysis"])
+    signed_card = sign_agent_card(to_agent_card(identity), private_hex)
+
+    registry = FileRegistry(tmp_path / "registry", trusted_keys={identity.agent_id: public_hex})
+    registry.publish(signed_card)
+
+    assert registry.get(identity.agent_id) is not None
+    assert [c["id"] for c in registry.find_by_skill("tax_analysis")] == [identity.agent_id]
+
+
+def test_file_registry_rejects_unsigned_card_when_trusted_keys_set(tmp_path):
+    from nexus.identity_crypto import generate_keypair
+
+    _, public_hex = generate_keypair()
+    identity = AgentIdentity(name="Tax Specialist", capabilities=["tax_analysis"])
+
+    registry = FileRegistry(tmp_path / "registry", trusted_keys={identity.agent_id: public_hex})
+    registry.publish({"id": identity.agent_id, "provider": {"name": "x"}, "skills": []})  # no signature
+
+    assert registry.get(identity.agent_id) is None
+    assert registry.find_by_skill("tax_analysis") == []
+
+
+def test_file_registry_rejects_card_signed_by_untrusted_key(tmp_path):
+    from nexus.a2a import to_agent_card
+    from nexus.identity_crypto import generate_keypair, sign_agent_card
+
+    attacker_private_hex, _ = generate_keypair()
+    _, real_public_hex = generate_keypair()
+    identity = AgentIdentity(name="Tax Specialist", capabilities=["tax_analysis"])
+    forged_card = sign_agent_card(to_agent_card(identity), attacker_private_hex)
+
+    registry = FileRegistry(tmp_path / "registry", trusted_keys={identity.agent_id: real_public_hex})
+    registry.publish(forged_card)
+
+    assert registry.get(identity.agent_id) is None
+
+
+def test_file_registry_rejects_card_for_unknown_agent_id_when_trusted_keys_set(tmp_path):
+    registry = FileRegistry(tmp_path / "registry", trusted_keys={})
+    agent = make_tax_agent()
+    publish_agent(registry, agent)  # no trusted key registered for this agent_id at all
+    assert registry.get(agent.identity.agent_id) is None

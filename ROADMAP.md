@@ -87,6 +87,20 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   project's own `mcp-tools/context7-mcp/index.js`, reimplemented in pure
   Python (stdlib `urllib`, no dependency) — a small step toward a real Model
   Registry: knowing when a referenced model/package version has gone stale.
+- [x] First real model adapter: Anthropic —
+  [`python/src/nexus/adapters/anthropic.py`](python/src/nexus/adapters/anthropic.py)
+  (`make_anthropic_agent`, `call_anthropic`), the Messages API over stdlib
+  `urllib`, no SDK dependency. The first adapter in this project that calls
+  a real, paid LLM — before this, `NexusCore` could route to a workflow, a
+  Ruflo-spawned agent, or a filesystem lookup, but never to a raw model
+  call. Never exercised for real in this project's own tests (same
+  precedent as `nexus.adapters.ruflo.cli_runner`) — tests point `api_url`
+  at a local fake server.
+- [ ] OpenAI, Google, Qwen, DeepSeek, ERNIE, Kimi, GLM, Hunyuan, Doubao,
+  and local models (Ollama, vLLM, llama.cpp) — not started. The Anthropic
+  adapter's shape (a thin `urllib` wrapper, API key resolved from an env
+  var, `task.input["prompt"]` in, `{text, model, usage}` out) is the
+  template to repeat, not a one-off.
 
 ## Level 4 — Agent Ecosystem
 

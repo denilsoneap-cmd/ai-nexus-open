@@ -568,3 +568,153 @@ def test_debate_no_usable_candidate_appears_in_trace_before_raising():
 
     assert [e["message_type"] for e in core.trace] == ["task", "error"]
     assert core.trace[1]["payload"]["error_code"] == "no_usable_candidate"
+
+
+def _register_slow_and_fast_agents(core: NexusCore) -> tuple[Agent, Agent]:
+    import time
+
+    slow = Agent(name="Slow", capabilities=["classify"])
+    fast = Agent(name="Fast", capabilities=["classify"])
+
+    @slow.task("classify")
+    def slow_handle(task: Task) -> dict:
+        time.sleep(0.3)
+        return {"handled_by": "slow"}
+
+    @fast.task("classify")
+    def fast_handle(task: Task) -> dict:
+        return {"handled_by": "fast"}
+
+    core.register(slow)
+    core.register(fast)
+    return slow, fast
+
+
+def test_debate_max_candidates_caps_the_pool_in_registration_order():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    a = Agent(name="A", capabilities=["op"])
+    b = Agent(name="B", capabilities=["op"])
+
+    @a.task("op")
+    def handle_a(task: Task) -> dict:
+        return {"handled_by": "a"}
+
+    @b.task("op")
+    def handle_b(task: Task) -> dict:
+        return {"handled_by": "b"}
+
+    core.register(a)
+    core.register(b)
+
+    verdict = core.debate("op", max_candidates=1)
+    assert len(verdict.candidates) == 1
+    assert verdict.candidates[0]["agent_id"] == a.identity.agent_id
+
+
+def test_debate_without_max_candidates_uses_every_registered_agent():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    agent_a = Agent(name="X", capabilities=["op"])
+    agent_b = Agent(name="Y", capabilities=["op"])
+
+    @agent_a.task("op")
+    def handle_a(task: Task) -> dict:
+        return {"handled_by": "x"}
+
+    @agent_b.task("op")
+    def handle_b(task: Task) -> dict:
+        return {"handled_by": "y"}
+
+    core.register(agent_a)
+    core.register(agent_b)
+
+    verdict = core.debate("op")
+    assert len(verdict.candidates) == 2
+
+
+def test_debate_timeout_drops_a_candidate_that_takes_too_long():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    slow, fast = _register_slow_and_fast_agents(core)
+
+    verdict = core.debate("classify", timeout=0.05)
+    assert len(verdict.candidates) == 1
+    assert verdict.winner_agent_id == fast.identity.agent_id
+
+
+def test_debate_timeout_applies_in_parallel_mode_too():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    slow, fast = _register_slow_and_fast_agents(core)
+
+    verdict = core.debate("classify", timeout=0.05, parallel=True)
+    assert len(verdict.candidates) == 1
+    assert verdict.winner_agent_id == fast.identity.agent_id
+
+
+def test_debate_without_timeout_lets_slow_candidates_finish():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    slow, fast = _register_slow_and_fast_agents(core)
+
+    verdict = core.debate("classify")  # timeout=None, default
+    assert len(verdict.candidates) == 2
+
+
+def test_debate_quorum_not_met_raises_and_appears_in_trace():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    good = Agent(name="Good", capabilities=["classify"])
+    failing = Agent(name="Failing", capabilities=["classify"])
+
+    @good.task("classify")
+    def good_handle(task: Task) -> dict:
+        return {"ok": True}
+
+    @failing.task("classify")
+    def failing_handle(task: Task):
+        return failing.fail(task, error_code="boom", message="handler broke")
+
+    core.register(good)
+    core.register(failing)
+
+    with pytest.raises(RuntimeError):
+        core.debate("classify", quorum=2)  # only 1 of 2 will actually respond
+
+    assert [e["message_type"] for e in core.trace] == ["task", "error"]
+    assert core.trace[1]["payload"]["error_code"] == "quorum_not_met"
+
+
+def test_debate_quorum_met_arbitrates_normally():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    a = Agent(name="A", capabilities=["op"])
+    b = Agent(name="B", capabilities=["op"])
+
+    @a.task("op")
+    def handle_a(task: Task) -> dict:
+        return {"handled_by": "a"}
+
+    @b.task("op")
+    def handle_b(task: Task) -> dict:
+        return {"handled_by": "b"}
+
+    core.register(a)
+    core.register(b)
+
+    verdict = core.debate("op", quorum=2)
+    assert len(verdict.candidates) == 2
+
+
+def test_debate_without_quorum_arbitrates_with_however_many_responded():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    good = Agent(name="Good", capabilities=["classify"])
+    failing = Agent(name="Failing", capabilities=["classify"])
+
+    @good.task("classify")
+    def good_handle(task: Task) -> dict:
+        return {"ok": True}
+
+    @failing.task("classify")
+    def failing_handle(task: Task):
+        return failing.fail(task, error_code="boom", message="handler broke")
+
+    core.register(good)
+    core.register(failing)
+
+    verdict = core.debate("classify")  # quorum=None, default
+    assert len(verdict.candidates) == 1

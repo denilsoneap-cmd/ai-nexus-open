@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
@@ -270,25 +271,44 @@ class NexusCore:
         return result_envelope
 
     @staticmethod
-    def _dispatch_candidates_sequential(pool: list[Agent], task: Task) -> dict[str, Result]:
+    def _call_with_timeout(candidate_agent: Agent, task: Task, timeout: float | None) -> Result:
+        """Plain direct call when `timeout` is `None` (the default) —
+        zero behavior/overhead change from before timeouts existed. A
+        timeout is enforced by running the handler in its own thread and
+        giving up waiting after `timeout` seconds; Python cannot forcibly
+        kill a thread, so a handler that ignores the timeout keeps running
+        in the background even though `debate()` has moved on — same
+        caveat `parallel=True` already carries about handlers needing to
+        behave themselves."""
+        if timeout is None:
+            return candidate_agent.handle(task)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(candidate_agent.handle, task).result(timeout=timeout)
+
+    @classmethod
+    def _dispatch_candidates_sequential(
+        cls, pool: list[Agent], task: Task, timeout: float | None = None,
+    ) -> dict[str, Result]:
         results: dict[str, Result] = {}
         for candidate_agent in pool:
             try:
-                results[candidate_agent.identity.agent_id] = candidate_agent.handle(task)
-            except (CapabilityUnavailable, TaskFailed):
+                results[candidate_agent.identity.agent_id] = cls._call_with_timeout(candidate_agent, task, timeout)
+            except (CapabilityUnavailable, TaskFailed, FutureTimeoutError):
                 pass  # a partial debate among agents that answered beats none at all
         return results
 
     @staticmethod
-    def _dispatch_candidates_parallel(pool: list[Agent], task: Task) -> dict[str, Result]:
+    def _dispatch_candidates_parallel(
+        pool: list[Agent], task: Task, timeout: float | None = None,
+    ) -> dict[str, Result]:
         results: dict[str, Result] = {}
         with ThreadPoolExecutor(max_workers=len(pool)) as executor:
             future_to_agent = {executor.submit(candidate_agent.handle, task): candidate_agent for candidate_agent in pool}
             for future in future_to_agent:
                 candidate_agent = future_to_agent[future]
                 try:
-                    results[candidate_agent.identity.agent_id] = future.result()
-                except (CapabilityUnavailable, TaskFailed):
+                    results[candidate_agent.identity.agent_id] = future.result(timeout=timeout)
+                except (CapabilityUnavailable, TaskFailed, FutureTimeoutError):
                     pass
         return results
 
@@ -300,6 +320,9 @@ class NexusCore:
         task_id: str | None = None,
         risk: str | None = None,
         parallel: bool = False,
+        timeout: float | None = None,
+        quorum: int | None = None,
+        max_candidates: int | None = None,
     ) -> Verdict:
         """RFC-0005: send the same task to every agent capable of
         `objective` (or the subset named by `agent_ids`) and arbitrate their
@@ -333,7 +356,25 @@ class NexusCore:
         `test_debate_parallel_matches_sequential_arbitration`). This makes
         `parallel=True` safe only for handlers that don't share mutable
         state with each other — the same precondition any concurrent task
-        runner has."""
+        runner has.
+
+        RFC-0005 §5's remaining known gaps, all opt-in and all `None`/off
+        by default (unchanged behavior unless asked for):
+        - `max_candidates` caps how many of `pool` actually get dispatched
+          (first `max_candidates`, in `pool`/registration order) — bounds
+          cost/wall-time when many agents are capable of `objective` but
+          debating all of them isn't worth it.
+        - `timeout` (seconds) bounds how long any single candidate's
+          `handle()` gets before being treated as a non-response (dropped,
+          same as a `TaskFailed`/`CapabilityUnavailable` candidate) —
+          Python cannot forcibly kill a thread, so a handler that ignores
+          this keeps running in the background regardless.
+        - `quorum` requires at least that many candidates to have actually
+          responded before arbitrating at all; fewer raises `RuntimeError`
+          (`error_code="quorum_not_met"`, recorded the same way the
+          existing "no candidate responded at all" error is) instead of
+          arbitrating a decision from a thinner pool than the caller
+          considered meaningful."""
         if self.arbiter is None:
             raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
 
@@ -364,11 +405,13 @@ class NexusCore:
             message = f"No agent registered with a handler for objective {objective!r}."
             _record_error("capability_unavailable", message)
             raise CapabilityUnavailable(f"no agent registered with a handler for objective {objective!r}")
+        if max_candidates is not None:
+            pool = pool[:max_candidates]
 
         task_node = f"task:{task.id}"
         results_by_agent_id = (
-            self._dispatch_candidates_parallel(pool, task) if parallel
-            else self._dispatch_candidates_sequential(pool, task)
+            self._dispatch_candidates_parallel(pool, task, timeout) if parallel
+            else self._dispatch_candidates_sequential(pool, task, timeout)
         )
 
         candidates: list[Candidate] = []
@@ -395,6 +438,13 @@ class NexusCore:
         if not candidates:
             message = f"no candidate produced a usable result for objective {objective!r}"
             _record_error("no_usable_candidate", message)
+            raise RuntimeError(message)
+        if quorum is not None and len(candidates) < quorum:
+            message = (
+                f"only {len(candidates)} of required quorum {quorum} candidates produced a "
+                f"usable result for objective {objective!r}"
+            )
+            _record_error("quorum_not_met", message)
             raise RuntimeError(message)
 
         verdict = self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())

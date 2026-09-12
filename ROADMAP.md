@@ -299,8 +299,17 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   alongside it, for building a report across many past debates rather than
   looking up one specific node. First real consumer:
   [`nexus-coder history`](https://github.com/denilsoneap-cmd/nexus-coder).
-- [ ] Remaining RFC-0005 §5 gaps: no timeout or quorum; no cap on how many
-  agents get debated.
+- [x] Remaining RFC-0005 §5 gaps closed: `debate(..., max_candidates=...,
+  timeout=..., quorum=...)`, all `None`/off by default (unchanged
+  behavior unless asked for). `max_candidates` caps `pool` to the first
+  N in registration order before dispatch. `timeout` (seconds) bounds any
+  single candidate's `handle()` — enforced the same way in both sequential
+  and parallel mode (`ThreadPoolExecutor` + `future.result(timeout=...)`;
+  a candidate that times out is dropped like a `TaskFailed` one, "partial
+  debate beats none"). `quorum` requires at least that many candidates to
+  have actually responded before arbitrating; fewer raises `RuntimeError`
+  (`error_code="quorum_not_met"`, recorded in `trace`/`audit` the same way
+  the pre-existing "nobody responded at all" error already was).
 
 ## Level 8 — Policy + Security
 

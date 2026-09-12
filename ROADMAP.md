@@ -8,7 +8,7 @@
 - [x] License (Apache 2.0)
 - [x] RFC process
 - [x] RFC-0001: Nexus Protocol (AI-to-AI message/task/evidence schema) — [draft](docs/rfcs/0001-nexus-protocol.md)
-- [ ] RFC-0002: Agent Identity
+- [x] RFC-0002: Agent Identity — [draft](docs/rfcs/0002-agent-identity.md)
 - [ ] Repository structure finalized under the `ai-nexus-open` org
 
 ## Level 1 — Nexus Protocol

@@ -90,6 +90,27 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
 
 ## Level 4 — Agent Ecosystem
 
+- [x] RFC-0007: Agent Discovery Registry —
+  [draft](docs/rfcs/0007-agent-discovery-registry.md), reference impl in
+  [`python/src/nexus/discovery.py`](python/src/nexus/discovery.py)
+  (`InMemoryRegistry`, `FileRegistry`, `publish_agent`) — agents publish
+  their AgentCard (RFC-0003 §2) and get found by skill without the caller
+  needing to know an `agent_id` in advance. `FileRegistry` reuses the "one
+  JSON file per entity in a shared directory" idiom from
+  `nexus.transport.filesystem`/`nexus.adapters.lessons`, with the same
+  agent_id path-sanitization the 2026-09-12 review added everywhere else.
+- [ ] Discovery is not wired into `NexusCore` — finding a card via
+  `find_by_skill` does not mean the task can actually be dispatched to that
+  agent; that needs a transport binding to wherever it lives (still open,
+  RFC-0003 §1). Discovery and dispatch are deliberately independent for now.
+- [ ] No verification of a discovered card's `AgentCardSignature`
+  (`nexus.identity_crypto`) before trusting it — a real gap for any
+  `FileRegistry` shared with untrusted writers (RFC-0007 Open Questions).
+- [ ] Agent Factory (dynamic agent creation/destruction) and Agent
+  Reputation (the original vision's "GitHub for agents" idea) — not
+  started; reputation substantially overlaps with Level 6's trust scoring
+  already built and may not need separate machinery.
+
 ## Level 5 — Memory + Knowledge
 
 - [x] Obsidian vault connector — [`python/src/nexus/adapters/obsidian.py`](python/src/nexus/adapters/obsidian.py)

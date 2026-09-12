@@ -132,8 +132,15 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   own duration/count fields instead of an OpenAI-shaped `usage` object.
   Confirms the adapter contract (`{text, model, usage}`) holds for local,
   free models too, not just paid cloud APIs.
-- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and other local runtimes (vLLM,
-  llama.cpp) — not started; same template to repeat.
+- [x] Eighth adapter, second local one: vLLM —
+  [`python/src/nexus/adapters/vllm.py`](python/src/nexus/adapters/vllm.py)
+  (`make_vllm_agent`, `call_vllm`) — `/v1/chat/completions` on a self-hosted
+  server, same OpenAI-compatible wire shape as `openai.py`/`qwen.py`, but
+  `model` is required (no universal default — vLLM serves whatever was
+  loaded at startup) and an API key is optional rather than required, since
+  vLLM commonly runs unauthenticated on a private network.
+- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and llama.cpp — not started; same
+  template to repeat.
 
 ## Level 4 — Agent Ecosystem
 

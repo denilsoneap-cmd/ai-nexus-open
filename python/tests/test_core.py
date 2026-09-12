@@ -1,5 +1,6 @@
 import pytest
 
+from nexus.adapters.graph import GraphStore
 from nexus.agent import Agent, CapabilityUnavailable
 from nexus.arbitration import ArbitrationEngine
 from nexus.audit import AuditLog
@@ -387,6 +388,118 @@ def test_debate_proceeds_when_policy_approves():
     _register_simple_agent(core)
     verdict = core.debate("op", risk="critical")
     assert verdict.winner_agent_id is not None
+
+
+def test_debate_parallel_matches_sequential_arbitration():
+    """Same scenario as test_debate_fans_out_to_every_capable_agent_and_arbitrates,
+    run with parallel=True — the winner and candidate count must not depend
+    on execution order."""
+    core = NexusCore(arbiter=ArbitrationEngine())
+
+    weak = Agent(name="Weak", capabilities=["classify"])
+    strong = Agent(name="Strong", capabilities=["classify"])
+
+    @weak.task("classify")
+    def weak_handle(task: Task) -> Result:
+        ev = weak.make_evidence(claim="x", source="y", transformation="inferred", confidence=0.5)
+        return Result(task_id=task.id, output={"label": "spam"}, evidence=[ev])
+
+    @strong.task("classify")
+    def strong_handle(task: Task) -> Result:
+        ev = strong.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.95)
+        return Result(task_id=task.id, output={"label": "ham"}, evidence=[ev])
+
+    core.register(weak)
+    core.register(strong)
+
+    verdict = core.debate("classify", parallel=True)
+    assert verdict.winner_agent_id == strong.identity.agent_id
+    assert len(verdict.candidates) == 2
+
+
+def test_debate_parallel_actually_overlaps_in_wall_time():
+    """Proves parallel=True dispatches concurrently rather than just
+    accepting the flag and running sequentially anyway: three handlers each
+    sleep 0.2s: sequential would take >=0.6s, concurrent should take well
+    under that."""
+    import time
+
+    core = NexusCore(arbiter=ArbitrationEngine())
+    for label in ("a", "b", "c"):
+        agent = Agent(name=label, capabilities=["slow_op"])
+
+        def handler(task: Task, _label: str = label) -> dict:
+            time.sleep(0.2)
+            return {"handled_by": _label}
+
+        agent.task("slow_op")(handler)
+        core.register(agent)
+
+    started = time.monotonic()
+    verdict = core.debate("slow_op", parallel=True)
+    elapsed = time.monotonic() - started
+
+    assert len(verdict.candidates) == 3
+    assert elapsed < 0.5  # well under 3 * 0.2s if actually concurrent
+
+
+def test_debate_parallel_drops_agents_whose_handler_fails():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    good = Agent(name="Good", capabilities=["classify"])
+    failing = Agent(name="Failing", capabilities=["classify"])
+
+    @good.task("classify")
+    def good_handle(task: Task) -> dict:
+        return {"label": "ok"}
+
+    @failing.task("classify")
+    def failing_handle(task: Task):
+        return failing.fail(task, error_code="boom", message="handler broke")
+
+    core.register(good)
+    core.register(failing)
+
+    verdict = core.debate("classify", parallel=True)
+    assert len(verdict.candidates) == 1
+    assert verdict.winner_agent_id == good.identity.agent_id
+
+
+def test_debate_parallel_records_trace_audit_and_graph_in_pool_order():
+    """Recorded order/edges must be identical to the sequential path even
+    though handlers complete out of order — the "Strong" agent is
+    registered second but finishes first; graph/candidates order must
+    still follow registration (pool) order, not completion order."""
+    import time
+
+    graph = GraphStore()
+    audit = AuditLog()
+    core = NexusCore(arbiter=ArbitrationEngine(), graph=graph, audit=audit)
+
+    slow_first = Agent(name="SlowFirst", capabilities=["classify"])
+    fast_second = Agent(name="FastSecond", capabilities=["classify"])
+
+    @slow_first.task("classify")
+    def slow_handle(task: Task) -> dict:
+        time.sleep(0.1)
+        return {"label": "slow"}
+
+    @fast_second.task("classify")
+    def fast_handle(task: Task) -> dict:
+        return {"label": "fast"}
+
+    core.register(slow_first)
+    core.register(fast_second)
+
+    verdict = core.debate("classify", task_id="task-parallel-order", parallel=True)
+
+    assert [c["agent_id"] for c in verdict.candidates] == [
+        slow_first.identity.agent_id, fast_second.identity.agent_id,
+    ]
+    task_node = "task:task-parallel-order"
+    routed_to_order = [e["target_id"] for e in graph.edges_from(task_node) if e["relation"] == "routed_to"]
+    assert routed_to_order == [slow_first.identity.agent_id, fast_second.identity.agent_id]
+    assert [e["message_type"] for e in core.trace] == ["task", "result"]
+    assert audit.verify() is True
 
 
 def test_debate_without_policy_configured_ignores_risk():

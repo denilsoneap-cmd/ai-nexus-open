@@ -280,8 +280,19 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
   (recorded before the matching exception is raised, same as `route()`'s
   error paths) for a policy block, no registered agent, or no candidate
   producing a usable result.
-- [ ] Remaining RFC-0005 §5 gaps: fan-out is sequential, not parallel, with
-  no timeout or quorum; no cap on how many agents get debated.
+- [x] Parallel fan-out — `debate(..., parallel=True)` (default `False`,
+  unchanged behavior): every candidate's `handle()` runs concurrently in
+  its own thread (`ThreadPoolExecutor`); only the actual handler calls are
+  concurrent — trace/audit/graph recording still happens afterward, single
+  -threaded, in original `pool` order, so recorded order and the
+  arbitrated winner are identical to the sequential path regardless of
+  completion order (proven with a real wall-clock-overlap test, not just a
+  mocked one). Safe only for handlers that don't share mutable state with
+  each other, same precondition any concurrent task runner has. First real
+  consumer: [`nexus-coder`](https://github.com/denilsoneap-cmd/nexus-coder),
+  which runs one real `aider` subprocess per candidate model.
+- [ ] Remaining RFC-0005 §5 gaps: no timeout or quorum; no cap on how many
+  agents get debated.
 
 ## Level 8 — Policy + Security
 

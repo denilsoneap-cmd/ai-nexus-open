@@ -25,11 +25,12 @@ module-ownership layers — they are different numbering schemes.
 from __future__ import annotations
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
 from .arbitration import Candidate, Verdict
-from .protocol import ErrorPayload, Evidence, Task, envelope, validate_envelope
+from .protocol import ErrorPayload, Evidence, Result, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
 
@@ -268,6 +269,29 @@ class NexusCore:
         self._record(result_envelope)
         return result_envelope
 
+    @staticmethod
+    def _dispatch_candidates_sequential(pool: list[Agent], task: Task) -> dict[str, Result]:
+        results: dict[str, Result] = {}
+        for candidate_agent in pool:
+            try:
+                results[candidate_agent.identity.agent_id] = candidate_agent.handle(task)
+            except (CapabilityUnavailable, TaskFailed):
+                pass  # a partial debate among agents that answered beats none at all
+        return results
+
+    @staticmethod
+    def _dispatch_candidates_parallel(pool: list[Agent], task: Task) -> dict[str, Result]:
+        results: dict[str, Result] = {}
+        with ThreadPoolExecutor(max_workers=len(pool)) as executor:
+            future_to_agent = {executor.submit(candidate_agent.handle, task): candidate_agent for candidate_agent in pool}
+            for future in future_to_agent:
+                candidate_agent = future_to_agent[future]
+                try:
+                    results[candidate_agent.identity.agent_id] = future.result()
+                except (CapabilityUnavailable, TaskFailed):
+                    pass
+        return results
+
     def debate(
         self,
         objective: str,
@@ -275,6 +299,7 @@ class NexusCore:
         agent_ids: list[str] | None = None,
         task_id: str | None = None,
         risk: str | None = None,
+        parallel: bool = False,
     ) -> Verdict:
         """RFC-0005: send the same task to every agent capable of
         `objective` (or the subset named by `agent_ids`) and arbitrate their
@@ -289,14 +314,26 @@ class NexusCore:
         since `Verdict` (unlike `route()`'s envelope) has no "blocked" shape
         to return instead.
 
-        Now records into `trace`/`audit`/`graph` the same way `route()`
-        does (RFC-0005 §5's previous known limitation): the task envelope
-        first, a `routed_to` edge per candidate actually dispatched to, a
-        `produced_result`/`supported_by` edge for each one that answered,
-        and finally a `result` envelope for the arbitrated winner — or an
-        `error` envelope (recorded before the corresponding exception is
-        raised) for a policy block, no registered agent, or no usable
-        candidate, mirroring `route()`'s error paths."""
+        Records into `trace`/`audit`/`graph` the same way `route()` does:
+        the task envelope first, a `routed_to` edge per candidate actually
+        dispatched to, a `produced_result`/`supported_by` edge for each one
+        that answered, and finally a `result` envelope for the arbitrated
+        winner — or an `error` envelope (recorded before the corresponding
+        exception is raised) for a policy block, no registered agent, or no
+        usable candidate, mirroring `route()`'s error paths.
+
+        `parallel=False` (default) calls each candidate's `handle()`
+        sequentially, in `pool` order — unchanged since RFC-0005. With
+        `parallel=True`, every candidate's `handle()` runs concurrently in
+        its own thread (a `ThreadPoolExecutor`, sized to the candidate
+        count); only the actual handler calls are concurrent — the
+        trace/audit/graph bookkeeping below still happens afterward, in a
+        single thread, in the original `pool` order, so recorded order and
+        the arbitrated outcome are identical either way (see
+        `test_debate_parallel_matches_sequential_arbitration`). This makes
+        `parallel=True` safe only for handlers that don't share mutable
+        state with each other — the same precondition any concurrent task
+        runner has."""
         if self.arbiter is None:
             raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
 
@@ -329,14 +366,18 @@ class NexusCore:
             raise CapabilityUnavailable(f"no agent registered with a handler for objective {objective!r}")
 
         task_node = f"task:{task.id}"
+        results_by_agent_id = (
+            self._dispatch_candidates_parallel(pool, task) if parallel
+            else self._dispatch_candidates_sequential(pool, task)
+        )
+
         candidates: list[Candidate] = []
         for candidate_agent in pool:
             if self.graph is not None:
                 self.graph.add_edge(task_node, candidate_agent.identity.agent_id, "routed_to")
-            try:
-                result = candidate_agent.handle(task)
-            except (CapabilityUnavailable, TaskFailed):
-                continue  # a partial debate among agents that answered beats none at all
+            result = results_by_agent_id.get(candidate_agent.identity.agent_id)
+            if result is None:
+                continue  # this candidate's handle() raised CapabilityUnavailable/TaskFailed
             candidates.append(Candidate(agent_id=candidate_agent.identity.agent_id, result=result))
             if self.graph is not None:
                 self.graph.add_edge(

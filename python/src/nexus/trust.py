@@ -36,6 +36,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def evidence_strength(evidence: list[Evidence], weights: dict[str, float] | None = None) -> float:
+    """Mean confidence weighted by transformation strength (RFC-0004 §2) —
+    the core formula this module's `TrustEvaluator` builds on for
+    *historical* per-agent scoring, and `nexus.arbitration`'s
+    `ArbitrationEngine` (RFC-0005, Level 7) reuses unchanged for
+    *per-decision* scoring of a single result's own attached evidence. One
+    formula, two different evidence pools — kept in one place so they can't
+    silently drift apart."""
+    if not evidence:
+        return 0.0
+    weights = weights or TRANSFORMATION_WEIGHTS
+    return sum(e.confidence * weights.get(e.transformation, 0.5) for e in evidence) / len(evidence)
+
+
 @dataclass
 class TrustScore:
     agent_id: str
@@ -49,10 +63,6 @@ class TrustEvaluator:
     def __init__(self, transformation_weights: dict[str, float] | None = None) -> None:
         self.transformation_weights = dict(transformation_weights or TRANSFORMATION_WEIGHTS)
 
-    def _weighted_confidence(self, evidence: Evidence) -> float:
-        weight = self.transformation_weights.get(evidence.transformation, 0.5)
-        return evidence.confidence * weight
-
     def evaluate(self, agent_id: str, evidence: list[Evidence], recurrences: int = 0) -> TrustScore:
         """RFC-0004 §2-3: `evidence` may contain entries from any agent —
         only those attributed to `agent_id` are scored."""
@@ -63,8 +73,7 @@ class TrustEvaluator:
                 breakdown={"reason": "no evidence on file"},
             )
 
-        weighted = [self._weighted_confidence(e) for e in own_evidence]
-        raw_score = sum(weighted) / len(weighted)
+        raw_score = evidence_strength(own_evidence, self.transformation_weights)
         penalty = min(MAX_RECURRENCE_PENALTY, recurrences * RECURRENCE_PENALTY_PER_LESSON)
         score = max(0.0, min(1.0, raw_score - penalty))
 

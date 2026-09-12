@@ -28,6 +28,7 @@ import uuid
 from typing import Any, Protocol
 
 from .agent import Agent, CapabilityUnavailable, TaskFailed
+from .arbitration import Candidate, Verdict
 from .protocol import ErrorPayload, Evidence, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
@@ -66,18 +67,29 @@ class TrustSource(Protocol):
     def evaluate(self, agent_id: str, evidence: list[Evidence], recurrences: int = 0) -> Any: ...
 
 
+class ArbitrationSource(Protocol):
+    """Structural type for an optional Level 7 arbitration engine (RFC-0005,
+    see `nexus.arbitration.ArbitrationEngine`). Same reasoning as `GraphSink`."""
+
+    def arbitrate(
+        self, task_id: str, candidates: list[Candidate], historical_evidence: list[Evidence] | None = None,
+    ) -> Verdict: ...
+
+
 class NexusCore:
     def __init__(
         self,
         graph: GraphSink | None = None,
         audit: AuditSink | None = None,
         trust: TrustSource | None = None,
+        arbiter: ArbitrationSource | None = None,
     ) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
         self.graph = graph
         self.audit = audit
         self.trust = trust
+        self.arbiter = arbiter
 
     def _record(self, env: dict[str, Any]) -> None:
         self.trace.append(env)
@@ -211,3 +223,40 @@ class NexusCore:
         validate_envelope(result_envelope)
         self._record(result_envelope)
         return result_envelope
+
+    def debate(
+        self,
+        objective: str,
+        input: dict[str, Any] | None = None,
+        agent_ids: list[str] | None = None,
+        task_id: str | None = None,
+    ) -> Verdict:
+        """RFC-0005: send the same task to every agent capable of
+        `objective` (or the subset named by `agent_ids`) and arbitrate their
+        results. Requires `NexusCore(arbiter=...)` — unlike `route()`,
+        there is no sane default for "no arbiter provided."
+
+        Known limitation (RFC-0005 §5): unlike `route()`, this does not
+        record anything into `trace`/`audit`/`graph` yet."""
+        if self.arbiter is None:
+            raise RuntimeError("NexusCore.debate() requires an arbiter — see NexusCore(arbiter=...)")
+
+        task = Task(id=task_id or f"task-{uuid.uuid4().hex[:8]}", objective=objective, input=input or {})
+        pool = self.find_by_objective(objective)
+        if agent_ids is not None:
+            pool = [a for a in pool if a.identity.agent_id in agent_ids]
+        if not pool:
+            raise CapabilityUnavailable(f"no agent registered with a handler for objective {objective!r}")
+
+        candidates: list[Candidate] = []
+        for candidate_agent in pool:
+            try:
+                result = candidate_agent.handle(task)
+            except (CapabilityUnavailable, TaskFailed):
+                continue  # a partial debate among agents that answered beats none at all
+            candidates.append(Candidate(agent_id=candidate_agent.identity.agent_id, result=result))
+
+        if not candidates:
+            raise RuntimeError(f"no candidate produced a usable result for objective {objective!r}")
+
+        return self.arbiter.arbitrate(task.id, candidates, self._historical_evidence())

@@ -1,4 +1,5 @@
 from .agent import Agent, CapabilityUnavailable, TaskFailed
+from .arbitration import ArbitrationEngine, Candidate, Verdict
 from .audit import AuditLog
 from .core import NexusCore
 from .identity import AgentIdentity, new_agent_id
@@ -8,7 +9,9 @@ from .trust import TrustEvaluator, TrustScore
 __all__ = [
     "Agent",
     "AgentIdentity",
+    "ArbitrationEngine",
     "AuditLog",
+    "Candidate",
     "CapabilityUnavailable",
     "ErrorPayload",
     "Evidence",
@@ -19,6 +22,7 @@ __all__ = [
     "TaskFailed",
     "TrustEvaluator",
     "TrustScore",
+    "Verdict",
     "envelope",
     "new_agent_id",
     "validate_envelope",

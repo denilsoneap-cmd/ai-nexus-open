@@ -148,6 +148,25 @@ system scores *identity/behavior* trust for authorization; RFC-0004 scores
 
 ## Level 7 — Debate + Arbitration
 
+- [x] RFC-0005: Debate + Arbitration —
+  [draft](docs/rfcs/0005-debate-arbitration.md), reference impl in
+  [`python/src/nexus/arbitration.py`](python/src/nexus/arbitration.py)
+  (`ArbitrationEngine`, `Candidate`, `Verdict`) — reconciles multiple
+  agents' results for the same task by comparing per-decision evidence
+  strength (reusing RFC-0004's `evidence_strength` formula), never by vote
+  count (ARCHITECTURE.md principle 3). Historical trust only breaks an
+  exact evidence-strength tie.
+- [x] `NexusCore.debate(objective, ...)` — fans a task out to every capable
+  agent (or a named subset) and arbitrates; requires `NexusCore(arbiter=...)`.
+  A candidate whose handler fails is dropped rather than failing the whole
+  debate. Proven with the literal scenario ARCHITECTURE.md principle 3
+  names: three agents agreeing on an unsupported answer do not outvote one
+  agent with real evidence.
+- [ ] Known gaps documented in RFC-0005 §5, not yet addressed: `debate()`
+  does not record into `trace`/`audit`/`graph` the way `route()` does;
+  fan-out is sequential, not parallel, with no timeout or quorum; no cap
+  on how many agents get debated.
+
 ## Level 8 — Policy + Security
 
 ## Level 9 — Execution + Observability

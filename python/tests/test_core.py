@@ -1,4 +1,7 @@
-from nexus.agent import Agent
+import pytest
+
+from nexus.agent import Agent, CapabilityUnavailable
+from nexus.arbitration import ArbitrationEngine
 from nexus.audit import AuditLog
 from nexus.core import NexusCore
 from nexus.protocol import Result, Task, validate_envelope
@@ -156,3 +159,91 @@ def test_route_without_trust_evaluator_keeps_first_match_regardless_of_evidence(
 
     result_envelope = core.route("shared_op")
     assert result_envelope["payload"]["output"]["handled_by"] == "bad"
+
+
+def test_debate_requires_an_arbiter():
+    core = NexusCore()  # arbiter=None
+    agent = Agent(name="A", capabilities=["op"])
+
+    @agent.task("op")
+    def handler(task: Task) -> dict:
+        return {"ok": True}
+
+    core.register(agent)
+    with pytest.raises(RuntimeError):
+        core.debate("op")
+
+
+def test_debate_fans_out_to_every_capable_agent_and_arbitrates():
+    core = NexusCore(arbiter=ArbitrationEngine())
+
+    weak = Agent(name="Weak", capabilities=["classify"])
+    strong = Agent(name="Strong", capabilities=["classify"])
+
+    @weak.task("classify")
+    def weak_handle(task: Task) -> Result:
+        ev = weak.make_evidence(claim="x", source="y", transformation="inferred", confidence=0.5)
+        return Result(task_id=task.id, output={"label": "spam"}, evidence=[ev])
+
+    @strong.task("classify")
+    def strong_handle(task: Task) -> Result:
+        ev = strong.make_evidence(claim="x", source="y", transformation="extracted_verbatim", confidence=0.95)
+        return Result(task_id=task.id, output={"label": "ham"}, evidence=[ev])
+
+    core.register(weak)
+    core.register(strong)
+
+    verdict = core.debate("classify")
+    assert verdict.winner_agent_id == strong.identity.agent_id
+    assert len(verdict.candidates) == 2
+
+
+def test_debate_drops_agents_whose_handler_fails():
+    """Exercises debate()'s `except (CapabilityUnavailable, TaskFailed):
+    continue` — a partial debate among agents that actually answered beats
+    failing the whole thing because one candidate errored."""
+    core = NexusCore(arbiter=ArbitrationEngine())
+    good = Agent(name="Good", capabilities=["classify"])
+    failing = Agent(name="Failing", capabilities=["classify"])
+
+    @good.task("classify")
+    def good_handle(task: Task) -> dict:
+        return {"label": "ok"}
+
+    @failing.task("classify")
+    def failing_handle(task: Task):
+        return failing.fail(task, error_code="boom", message="handler broke")
+
+    core.register(good)
+    core.register(failing)
+
+    verdict = core.debate("classify")
+    assert len(verdict.candidates) == 1
+    assert verdict.winner_agent_id == good.identity.agent_id
+
+
+def test_debate_raises_when_no_agent_registered_for_objective():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    with pytest.raises(CapabilityUnavailable):
+        core.debate("nonexistent_objective")
+
+
+def test_debate_can_target_a_subset_of_agents_by_id():
+    core = NexusCore(arbiter=ArbitrationEngine())
+    a = Agent(name="A", capabilities=["op"])
+    b = Agent(name="B", capabilities=["op"])
+
+    @a.task("op")
+    def handle_a(task: Task) -> dict:
+        return {"handled_by": "a"}
+
+    @b.task("op")
+    def handle_b(task: Task) -> dict:
+        return {"handled_by": "b"}
+
+    core.register(a)
+    core.register(b)
+
+    verdict = core.debate("op", agent_ids=[a.identity.agent_id])
+    assert len(verdict.candidates) == 1
+    assert verdict.winner_agent_id == a.identity.agent_id

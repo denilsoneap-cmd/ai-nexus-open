@@ -22,9 +22,9 @@ NEXUS CORE
 ```
 
 **Ruflo** (github.com/ruvnet/ruflo, a claude-flow-based swarm/agent
-orchestration CLI + MCP toolkit) is the initial dogfood adapter for Level 6
-(Agent Orchestration) — see [ROADMAP.md](ROADMAP.md). It is chosen because a
-working instance is already configured in this workspace, not because it is
+orchestration CLI + MCP toolkit) is the initial dogfood adapter for
+**Level 2 (Nexus Core)** — see [ROADMAP.md](ROADMAP.md). It is chosen because
+a working instance is already configured in this workspace, not because it is
 privileged in the protocol: it must be replaceable exactly like any other
 orchestration backend.
 
@@ -74,16 +74,27 @@ The registry is discovery, not gatekeeping.
 
 | Layer | Responsibility |
 |---|---|
-| 01 Protocol | AI-to-AI message/task/evidence schemas |
-| 02 Agent Identity | How an agent identifies and declares capabilities |
-| 03 Communication | Message bus between agents |
-| 04 Context & Memory | Working / episodic / semantic / shared memory |
-| 05 Evidence & Trust | Claim provenance and agent trust scoring |
-| 06 Agent Orchestration | Task routing, multi-agent coordination |
-| 07 Policy & Safety | Risk assessment, human-approval gates |
-| 08 Execution | Sandboxed tool/action execution |
-| 09 Observability | Tracing, metrics, audit log |
-| 10 Developer Platform | SDKs, CLI, docs, examples |
+| L01 Protocol | AI-to-AI message/task/evidence schemas |
+| L02 Agent Identity | How an agent identifies and declares capabilities |
+| L03 Communication | Message bus between agents |
+| L04 Context & Memory | Working / episodic / semantic / shared memory |
+| L05 Evidence & Trust | Claim provenance and agent trust scoring |
+| L06 Agent Orchestration | Task routing, multi-agent coordination |
+| L07 Policy & Safety | Risk assessment, human-approval gates |
+| L08 Execution | Sandboxed tool/action execution |
+| L09 Observability | Tracing, metrics, audit log |
+| L10 Developer Platform | SDKs, CLI, docs, examples |
 
 Each layer is a candidate for its own repository under the `ai-nexus-open`
 GitHub organization once it has a merged RFC and a reference implementation.
+
+**This table is independent of the numbered Levels in [ROADMAP.md](ROADMAP.md).**
+The `L0N` layers above describe module ownership (which concern a piece of
+code belongs to); ROADMAP's `Level N` describes build sequence (what gets
+built in what order, following the project's original phased vision). They
+were designed separately and do not correspond 1:1 — e.g. ROADMAP's
+Level 2 (Nexus Core) touches L01, L03, and L06 at once. Code and RFCs should
+cite `Level N` (linking to ROADMAP.md) when talking about build sequence, and
+name a layer from this table explicitly (e.g. "the Agent Orchestration
+layer") — not a bare number — when talking about module ownership, to avoid
+exactly the kind of cross-referencing bug this note was added to fix.

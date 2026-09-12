@@ -123,7 +123,7 @@ separated in transit.
 | `task.constraints` | array\<string\> | no | Machine-checkable limits the receiver must respect (network, cost, time, tools allowed). Enforcement is the Policy layer's job (Level 8); the protocol only carries the declaration. |
 | `task.risk` | string | no | One of `low`, `medium`, `high`, `critical` — self-declared by the sender as a hint; the Policy layer is the authority, not this field. |
 | `task.deadline` | string | no | ISO 8601. |
-| `context` | object | no | Opaque memory/context payload from Level 4 (Context & Memory). This RFC does not define its internal shape. |
+| `context` | object | no | Opaque memory/context payload from Level 5 (Memory + Knowledge). This RFC does not define its internal shape. |
 
 #### 4.1 Result schema (`payload` when `message_type = "result"`)
 

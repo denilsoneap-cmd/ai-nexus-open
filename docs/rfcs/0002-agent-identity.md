@@ -17,8 +17,8 @@ a `capabilities` list, and a `scope`. It also fixes the canonical shape of
 
 RFC-0001 needed *a* value to put in `sender`/`receiver` and deliberately left
 its shape undefined. That is no longer sufficient once agents need to be
-**discovered** (Level 4, Nexus Discovery) and **routed to by capability**
-(Level 6, Agent Orchestration) rather than addressed by a hardcoded ID.
+**discovered** (Level 4, Agent Ecosystem/Discovery) and **routed to by
+capability** (Level 2, Nexus Core) rather than addressed by a hardcoded ID.
 
 Rather than design this from scratch, this RFC grounds itself in the
 identity/scope model already running in this workspace via Ruflo
@@ -151,7 +151,8 @@ workspace's own orchestrator (e.g. this workspace's Ruflo instance via
 - **Coupling identity to a specific transport session** (e.g. an MCP session
   ID): rejected — an agent's identity must outlive any single connection so
   that a task trace remains attributable after reconnects; session binding is
-  a Level 3 (Communication) concern layered on top of, not equal to, identity.
+  a Level 2 (Nexus Core / message bus) concern layered on top of, not equal
+  to, identity.
 
 ## Backward compatibility
 

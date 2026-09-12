@@ -22,11 +22,21 @@ from typing import Any
 from .identity import AgentIdentity
 from .protocol import ErrorPayload, Evidence, ProtocolError, Result, Task
 
-Handler = Callable[[Task], "Result | dict[str, Any]"]
+Handler = Callable[[Task], "Result | dict[str, Any] | ErrorPayload"]
 
 
 class CapabilityUnavailable(LookupError):
     """No handler is registered for the requested objective."""
+
+
+class TaskFailed(Exception):
+    """A registered handler ran but could not complete the task — carries
+    the ErrorPayload it returned (RFC-0001 §4.2), as opposed to
+    CapabilityUnavailable, which means no handler existed at all."""
+
+    def __init__(self, error: ErrorPayload) -> None:
+        self.error = error
+        super().__init__(error.message)
 
 
 class Agent:
@@ -78,11 +88,13 @@ class Agent:
                     f"expected {incoming.id!r}"
                 )
             return outcome
+        if isinstance(outcome, ErrorPayload):
+            raise TaskFailed(outcome)
         if isinstance(outcome, dict):
             return Result(task_id=incoming.id, status="success", output=outcome)
         raise ProtocolError(
-            f"handler for {incoming.objective!r} must return a dict or Result, "
-            f"got {type(outcome).__name__}"
+            f"handler for {incoming.objective!r} must return a dict, Result, or "
+            f"ErrorPayload, got {type(outcome).__name__}"
         )
 
     def make_evidence(

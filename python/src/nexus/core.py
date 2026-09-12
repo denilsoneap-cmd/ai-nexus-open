@@ -2,35 +2,57 @@
 
 This is a single-process, in-memory reference implementation: it exists to
 prove the RFC-0001/RFC-0002 wire format round-trips through something
-runnable, and to give Level 6 (real routing/arbitration logic) a seam to
-plug into later. It intentionally does not:
+runnable, and to give Levels 6/7 (trust-informed selection, arbitration) a
+seam to plug into later. It intentionally does not:
 
 - talk to a real transport (MCP, HTTP, a queue) — see RFC-0001's transport
   bindings open question,
 - do capability-based routing beyond "first agent with a matching handler" —
-  real selection (cost, trust, load) is Level 6 (Agent Orchestration),
-- enforce `task.constraints` / `task.risk` — that is Level 8 (Policy).
+  real selection (cost, trust, load) is Level 6 (Evidence + Trust),
+- enforce `task.constraints` / `task.risk` — that is Level 8 (Policy + Security).
 
 Every envelope that passes through `route()` is recorded in `self.trace` in
-send order, which is the seed of Level 9 (Observability): a full task trace
-today is just "read this list."
+send order, which is the seed of Level 9 (Execution + Observability): a full
+task trace today is just "read this list."
+
+See [ARCHITECTURE.md](../../../ARCHITECTURE.md#layer-breakdown) for the
+distinction between these ROADMAP.md build-sequence Levels and the L0N
+module-ownership layers — they are different numbering schemes.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Protocol
 
-from .agent import Agent, CapabilityUnavailable
+from .agent import Agent, CapabilityUnavailable, TaskFailed
 from .protocol import ErrorPayload, ProtocolError, Result, Task, envelope, validate_envelope
 
 CORE_SENDER = {"agent_id": "agent:" + "0" * 32}  # reserved id for the orchestrator itself
 
 
+class GraphSink(Protocol):
+    """Structural type for an optional Level 12 graph store. `NexusCore`
+    depends on this shape, not on `nexus.adapters.graph.GraphStore`
+    concretely — any object with this method works (per ARCHITECTURE.md
+    principle 1, the core does not import adapters)."""
+
+    def add_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        relation: str,
+        weight: float = 1.0,
+        confidence: float = 1.0,
+        metadata: dict[str, Any] | None = None,
+    ) -> str: ...
+
+
 class NexusCore:
-    def __init__(self) -> None:
+    def __init__(self, graph: GraphSink | None = None) -> None:
         self._agents: dict[str, Agent] = {}
         self.trace: list[dict[str, Any]] = []
+        self.graph = graph
 
     def register(self, agent: Agent) -> None:
         self._agents[agent.identity.agent_id] = agent
@@ -93,6 +115,10 @@ class NexusCore:
             return error_envelope
 
         agent = candidates[0]  # Level 6 will replace this with real selection.
+        task_node = f"task:{task.id}"
+        if self.graph is not None:
+            self.graph.add_edge(task_node, agent.identity.agent_id, "routed_to")
+
         try:
             result = agent.handle(task)
         except CapabilityUnavailable as exc:  # pragma: no cover - defensive
@@ -103,6 +129,13 @@ class NexusCore:
                 payload=err.to_payload(),
                 correlation_id=task_envelope["message_id"],
             )
+        except TaskFailed as exc:
+            result_envelope = envelope(
+                message_type="error",
+                sender=agent.identity.to_dict(minimal=True),
+                payload=exc.error.to_payload(),
+                correlation_id=task_envelope["message_id"],
+            )
         else:
             result_envelope = envelope(
                 message_type="result",
@@ -110,6 +143,18 @@ class NexusCore:
                 payload=result.to_payload(),
                 correlation_id=task_envelope["message_id"],
             )
+            if self.graph is not None:
+                self.graph.add_edge(
+                    agent.identity.agent_id, task_node, "produced_result",
+                    confidence=result.confidence if result.confidence is not None else 1.0,
+                )
+                for ev in result.evidence:
+                    evidence_node = f"evidence:{uuid.uuid4().hex[:12]}"
+                    self.graph.add_edge(
+                        task_node, evidence_node, "supported_by",
+                        confidence=ev.confidence,
+                        metadata={"claim": ev.claim, "source": ev.source, "agent_id": ev.agent_id},
+                    )
         validate_envelope(result_envelope)
         self.trace.append(result_envelope)
         return result_envelope

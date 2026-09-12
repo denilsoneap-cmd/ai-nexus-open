@@ -52,11 +52,23 @@
 - [x] Message bus — filesystem binding done (see Level 1 above); a networked
   binding is still open
 - [x] Agent registry — `NexusCore.register()` / `find_by_capability()`
-- [ ] Dogfood adapter: [Ruflo](https://github.com/ruvnet/ruflo) (claude-flow-based
-  swarm orchestration) — already configured in this workspace (`.claude-flow/`,
-  `.swarm/`, `.mcp.json`); not yet wired to `NexusCore` — next real milestone
-  is routing a Nexus task to a Ruflo-spawned agent instead of an in-process
-  Python handler, replaceable per the vendor-neutrality principle.
+- [x] Dogfood adapter: [Ruflo](https://github.com/ruvnet/ruflo) —
+  [`python/src/nexus/adapters/ruflo.py`](python/src/nexus/adapters/ruflo.py)
+  (`make_ruflo_agent`), routes a Nexus task to `ruflo agent spawn -t <type>
+  --task <description>`, replaceable per the vendor-neutrality principle
+  (an injectable `runner`, same pattern as `adapters/superpowers.py`).
+  `list_agents()` (read-only, no LLM cost) verified against the real
+  `ruflo v3.41.2` CLI already installed in this workspace — surfaced and
+  fixed a real Windows bug along the way: `subprocess.run(["npx", ...])`
+  fails with `FileNotFoundError` because `npx`/`ruflo` are `.cmd` shims on
+  Windows that `subprocess` can't resolve via bare PATH lookup without
+  `shell=True`; fixed by resolving through `shutil.which()` instead, which
+  returns the extension-included path. Actually spawning an agent
+  (`cli_runner`, the default `runner`) triggers a real LLM call through
+  whatever provider Ruflo is configured for — not exercised automatically
+  here; the default test suite fakes the runner, and one opt-in test
+  (`NEXUS_RUFLO_INTEGRATION=1`) exercises only the free, read-only
+  `list_agents()` path against the live CLI.
 
 Current reference implementation is intentionally minimal: routing picks the
 first capable agent (no cost/trust/load selection — that's Level 6), and

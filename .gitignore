@@ -10,3 +10,8 @@ build/
 .env
 .DS_Store
 *.log
+
+# Local state from running the real ruflo CLI (nexus/adapters/ruflo.py) —
+# runtime state, not source.
+.claude-flow/
+.swarm/

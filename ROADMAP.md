@@ -125,7 +125,14 @@ Hunyuan, Doubao, and open-source/local models (Ollama, vLLM, llama.cpp).
   both vendors expose an OpenAI-compatible Chat Completions endpoint, so each
   adapter is a near-identical copy of `openai.py` with a different base URL,
   default model, and API key variable (`QWEN_API_KEY` / `DEEPSEEK_API_KEY`).
-- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and local models (Ollama, vLLM,
+- [x] Seventh adapter, first local model: Ollama —
+  [`python/src/nexus/adapters/ollama.py`](python/src/nexus/adapters/ollama.py)
+  (`make_ollama_agent`, `call_ollama`) — `/api/chat` on a local server, no
+  API key, `num_predict` instead of `max_tokens`, usage reported as Ollama's
+  own duration/count fields instead of an OpenAI-shaped `usage` object.
+  Confirms the adapter contract (`{text, model, usage}`) holds for local,
+  free models too, not just paid cloud APIs.
+- [ ] ERNIE, Kimi, GLM, Hunyuan, Doubao, and other local runtimes (vLLM,
   llama.cpp) — not started; same template to repeat.
 
 ## Level 4 — Agent Ecosystem
